@@ -1,0 +1,7 @@
+org/eclipse/californium/integration/test/SecureObserveTest.class
+org/eclipse/californium/integration/test/SecureBlockwiseTest.class
+org/eclipse/californium/integration/test/SecureObserveTest$MyResource.class
+org/eclipse/californium/integration/test/SecureBlockwiseTest$MyResource.class
+org/eclipse/californium/integration/test/SecureTest.class
+org/eclipse/californium/integration/test/util/CoapsNetworkRule.class
+org/eclipse/californium/integration/test/TestUtilPskStore.class
