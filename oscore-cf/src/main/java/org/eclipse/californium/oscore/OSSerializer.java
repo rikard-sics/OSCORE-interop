@@ -191,6 +191,8 @@ public class OSSerializer {
 					aad.Add(algorithms);
 					aad.Add(ctx.getSenderId());
 					aad.Add(processPartialIV(ctx.getSenderSeq()));
+					byte[] a = new byte[0];
+					aad.Add(CBORObject.FromObject( a ));
 					return aad.EncodeToBytes();
 				} else {
 					LOGGER.error(ErrorDescriptions.OPTIONSET_NULL);

@@ -60,7 +60,10 @@ public class RequestEncryptor extends Encryptor {
 		Encrypt0Message enc = prepareCOSEStructure(confidential, aad);
 		byte[] cipherText = encryptAndEncode(enc, ctx, request, false);
 		compression(ctx, cipherText, request, false);
-
+		InteropClient.printArrayBytes(aad);	
+		InteropClient.printArrayBytes(confidential);	
+		InteropClient.printArrayBytes(enc.GetContent());	
+		InteropClient.printArrayBytes(cipherText);	
 		request.setOptions(OptionJuggle.prepareUoptions(request.getOptions()));
 
 		ctx.increaseSenderSeq();

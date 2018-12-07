@@ -46,6 +46,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 
+import org.eclipse.californium.oscore.InteropClient;
 import org.eclipse.californium.scandium.dtls.cipher.CCMBlockCipher;
 
 /**
@@ -139,7 +140,17 @@ public abstract class EncryptCommon extends Message {
 			throw new CoseException("Decryption failure", ex);
 		}
 	}
-
+	
+    private byte[] getAADBytes() {
+        CBORObject obj = CBORObject.NewArray();
+        
+        obj.Add(context);
+        if (objProtected.size() == 0) obj.Add(CBORObject.FromObject(new byte[0]));
+        else obj.Add(objProtected.EncodeToBytes());
+        obj.Add(CBORObject.FromObject(externalData));
+        return obj.EncodeToBytes();
+    }
+    
 	private void AES_CCM_Encrypt(AlgorithmID alg, byte[] rgbKey) throws CoseException, IllegalStateException {
 		SecureRandom random = new SecureRandom();
 
@@ -164,9 +175,10 @@ public abstract class EncryptCommon extends Message {
 				throw new CoseException("IV is too long.");
 			}
 		}
-
+		byte[] aad = getAADBytes();
+		InteropClient.printArrayBytes(aad);
 		try {
-			rgbEncrypt = CCMBlockCipher.encrypt(rgbKey, iv.GetByteString(), getExternal(), GetContent(), 0);
+			rgbEncrypt = CCMBlockCipher.encrypt(rgbKey, iv.GetByteString(), aad, GetContent(), 8);
 		} catch (NoSuchAlgorithmException ex) {
 			throw new CoseException("Algorithm not supported", ex);
 		} catch (Exception ex) {
