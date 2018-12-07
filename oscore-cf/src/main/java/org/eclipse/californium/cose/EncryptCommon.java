@@ -2,6 +2,7 @@
 
  * Copyright (c) 2016, Jim Schaad
  * Copyright (c) 2018, Tobias Andersson, RISE SICS
+ * Copyright (c) 2018, Rikard Höglund, RISE SICS
  * All rights reserved.
 
  * Redistribution and use in source and binary forms, with or without
@@ -46,7 +47,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 
-import org.eclipse.californium.oscore.InteropClient;
+import javax.xml.bind.DatatypeConverter;
 import org.eclipse.californium.scandium.dtls.cipher.CCMBlockCipher;
 
 /**
@@ -141,6 +142,9 @@ public abstract class EncryptCommon extends Message {
 		}
 	}
 	
+	//Method taken from EncryptCommon in COSE
+	//This will provide the full AAD / Encrypt0-structure //Rikard
+	//FIXME: Do for decryption
     private byte[] getAADBytes() {
         CBORObject obj = CBORObject.NewArray();
         
@@ -175,8 +179,13 @@ public abstract class EncryptCommon extends Message {
 				throw new CoseException("IV is too long.");
 			}
 		}
+		
+		//Modified to use the full AAD here rather than just the external AAD //Rikard
+		//Tag length (last parameter) was also changed to 8 from 0
+		//FIXME: Do the same on the decryption
 		byte[] aad = getAADBytes();
-		InteropClient.printArrayBytes(aad);
+		System.out.println("Full AAD / Encrypt0: " + DatatypeConverter.printHexBinary(aad));
+		
 		try {
 			rgbEncrypt = CCMBlockCipher.encrypt(rgbKey, iv.GetByteString(), aad, GetContent(), 8);
 		} catch (NoSuchAlgorithmException ex) {

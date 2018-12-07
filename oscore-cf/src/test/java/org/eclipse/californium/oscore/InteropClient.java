@@ -17,7 +17,6 @@
  ******************************************************************************/
 package org.eclipse.californium.oscore;
 
-import java.util.Arrays;
 import org.eclipse.californium.core.CoapClient;
 import org.eclipse.californium.core.CoapResponse;
 import org.eclipse.californium.core.Utils;
@@ -38,7 +37,7 @@ import COSE.AlgorithmID;
  *
  */
 public class InteropClient {
-
+	
 	private final static HashMapCtxDB db = HashMapCtxDB.getInstance();
 	private final static String baseUri = "coap://localhost";
 	private final static String resourceUriOld = "/hello/1";
@@ -66,7 +65,7 @@ public class InteropClient {
 		//(Should no longer be needed)
 		NetworkConfig config = NetworkConfig.getStandard();
 		config.setInt(NetworkConfig.Keys.MAX_RETRANSMIT, 0);
-
+		
 		
 		TEST_1a();
 	}
@@ -107,7 +106,7 @@ public class InteropClient {
 		String resourceUri = "/oscore/hello/1";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
 		Request r = new Request(Code.GET);
-
+		printCurrentKeyInformation();
 		CoapResponse resp = c.advanced(r);
 		
 		System.out.println("Original CoAP message:");
@@ -489,9 +488,9 @@ public class InteropClient {
 	 */
 	private static void printCurrentKeyInformation() {
 		byte[] master_secret, master_salt, common_iv;
-		byte[] sender_id, sender_key, sender_iv = null;
+		byte[] sender_id, sender_key;
 		int sender_seq_number;
-		byte[] recipient_id, recipient_key, recipient_iv = null;	
+		byte[] recipient_id, recipient_key;	
 		
 		try {
 			//Common context
@@ -530,16 +529,12 @@ public class InteropClient {
 		printArrayBytes(sender_key);
 		System.out.print("\tSender Seq Number: ");
 		System.out.println(sender_seq_number);
-		System.out.print("\tSender IV: ");
-		printArrayBytes(sender_iv);
 		
 		System.out.println("Recipient Context: ");
 		System.out.print("\tRecipient ID: ");
 		printArrayBytes(recipient_id);
 		System.out.print("\tRecipient Key: ");
 		printArrayBytes(recipient_key);
-		System.out.print("\tRecipient IV: ");
-		printArrayBytes(recipient_iv);
 		
 	}
 	
@@ -553,12 +548,7 @@ public class InteropClient {
 			System.out.println("Null");
 			return;
 		}
-		
-//		if(array.length == 0) {
-//			System.out.println("Empty");
-//			return;
-//		}
-//		
+
 		System.out.print("0x");
 		for(int i = 0 ; i < array.length ; i++)
 			System.out.print(String.format("%02x", array[i]));

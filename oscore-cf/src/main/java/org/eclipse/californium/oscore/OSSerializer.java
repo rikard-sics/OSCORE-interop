@@ -14,6 +14,7 @@
  *    Joakim Brorsson
  *    Ludwig Seitz (RISE SICS)
  *    Tobias Andersson (RISE SICS)
+ *    Rikard Höglund (RISE SICS)
  *    
  ******************************************************************************/
 package org.eclipse.californium.oscore;
@@ -191,8 +192,12 @@ public class OSSerializer {
 					aad.Add(algorithms);
 					aad.Add(ctx.getSenderId());
 					aad.Add(processPartialIV(ctx.getSenderSeq()));
-					byte[] a = new byte[0];
-					aad.Add(CBORObject.FromObject( a ));
+					
+					//Added the last parameter which should be the options //Rikard
+					//FIXME: Do this properly and also in other equivalent methods
+					byte[] empty = new byte[0];
+					aad.Add(CBORObject.FromObject(empty));
+					
 					return aad.EncodeToBytes();
 				} else {
 					LOGGER.error(ErrorDescriptions.OPTIONSET_NULL);
