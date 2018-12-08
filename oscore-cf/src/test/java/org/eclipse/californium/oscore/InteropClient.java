@@ -39,8 +39,7 @@ import COSE.AlgorithmID;
 public class InteropClient {
 	
 	private final static HashMapCtxDB db = HashMapCtxDB.getInstance();
-	private final static String baseUri = "coap://localhost";
-	private final static String resourceUriOld = "/hello/1";
+	private final static String baseUri = "coap://[::1]";
 	private final static AlgorithmID alg = AlgorithmID.AES_CCM_16_64_128;
 	private final static AlgorithmID kdf = AlgorithmID.HKDF_HMAC_SHA_256;
 
@@ -68,16 +67,6 @@ public class InteropClient {
 		
 		
 		TEST_3a();
-	}
-	
-	public static void testA(OSCoreCtx ctx) throws OSException {
-		db.addContext(baseUri, ctx);
-
-		OscoreClient c = new OscoreClient(Code.GET, baseUri + resourceUriOld);
-		CoapResponse resp = c.send();
-		
-		printResponse(resp);		
-	
 	}
 
 	/** --- Interop tests follow --- **/

@@ -14,12 +14,16 @@
  *    Joakim Brorsson
  *    Ludwig Seitz (RISE SICS)
  *    Tobias Andersson (RISE SICS)
+ *    Rikard Höglund (RISE SICS)
  *    
  ******************************************************************************/
 package org.eclipse.californium.oscore;
 
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import org.slf4j.Logger;
@@ -209,6 +213,19 @@ public class HashMapCtxDB implements OSCoreCtxDB {
 			LOGGER.error("Error in the request URI: " + uri + " message: " + e.getMessage());
 			throw new OSException(e.getMessage());
 		}
+		
+		//Further normalization for IPv6 addresses //Rikard
+		//Normalization above can give different results depending on structure of IPv6 address
+		InetAddress ipv6Addr = null;
+		try {
+			ipv6Addr = InetAddress.getByName(normalized);
+		} catch (UnknownHostException e) {
+			LOGGER.error("Error finding host of request URI: " + uri + " message: " + e.getMessage());
+		}
+		if(ipv6Addr instanceof Inet6Address) {
+			normalized = ipv6Addr.getHostAddress();
+		}
+		
 		return normalized;
 	}
 
