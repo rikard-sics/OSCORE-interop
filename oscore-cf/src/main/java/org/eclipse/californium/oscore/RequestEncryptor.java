@@ -64,11 +64,10 @@ public class RequestEncryptor extends Encryptor {
 		byte[] cipherText = encryptAndEncode(enc, ctx, request, false);
 		compression(ctx, cipherText, request, false);
 		
-		//Changed prints //Rikard
+		//Added prints //Rikard
 		System.out.println("RequestEncryptor: External AAD: " + DatatypeConverter.printHexBinary(aad));
-		System.out.println("RequestEncryptor: Confidential: " + DatatypeConverter.printHexBinary(confidential));
-		System.out.println("RequestEncryptor: enc.GetContent(): " + DatatypeConverter.printHexBinary(enc.GetContent()));
 		System.out.println("RequestEncryptor: ciphertext: " + DatatypeConverter.printHexBinary(cipherText));
+		System.out.println("RequestEncryptor: plaintext: " + DatatypeConverter.printHexBinary(enc.GetContent()));
 		
 		request.setOptions(OptionJuggle.prepareUoptions(request.getOptions()));
 

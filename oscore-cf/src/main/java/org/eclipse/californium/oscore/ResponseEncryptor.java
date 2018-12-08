@@ -49,7 +49,6 @@ public class ResponseEncryptor extends Encryptor {
 	 * @throws OSException when encryption fails
 	 */
 	public static Response encrypt(Response response, OSCoreCtx ctx, final boolean newPartialIV) throws OSException {
-
 		if (ctx == null) {
 			LOGGER.error(ErrorDescriptions.CTX_NULL);
 			throw new OSException(ErrorDescriptions.CTX_NULL);
@@ -68,9 +67,8 @@ public class ResponseEncryptor extends Encryptor {
 
 		//Added prints //Rikard
 		System.out.println("ResponseEncryptor: External AAD: " + DatatypeConverter.printHexBinary(aad));
-		System.out.println("ResponseEncryptor: Confidential: " + DatatypeConverter.printHexBinary(confidential));
-		System.out.println("ResponseEncryptor: enc.GetContent(): " + DatatypeConverter.printHexBinary(enc.GetContent()));
 		System.out.println("ResponseEncryptor: ciphertext: " + DatatypeConverter.printHexBinary(cipherText));
+		System.out.println("ResponseEncryptor: plaintext: " + DatatypeConverter.printHexBinary(enc.GetContent()));
 		
 		options = response.getOptions();
 		response.setOptions(OptionJuggle.prepareUoptions(options));

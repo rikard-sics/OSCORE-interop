@@ -109,8 +109,7 @@ public class OSSerializer {
 					
 					//Added the last parameter which should be the options //Rikard
 					//FIXME: Do this properly
-					byte[] empty = new byte[0];
-					aad.Add(CBORObject.FromObject(empty));
+					aad.Add(CBORObject.FromObject(EMPTY));
 
 					return aad.EncodeToBytes();
 				} else {
@@ -156,8 +155,7 @@ public class OSSerializer {
 						
 						//Added the last parameter which should be the options //Rikard
 						//FIXME: Do this properly
-						byte[] empty = new byte[0];
-						aad.Add(CBORObject.FromObject(empty));
+						aad.Add(CBORObject.FromObject(EMPTY));
 						
 						return aad.EncodeToBytes();
 					} else {
@@ -206,8 +204,7 @@ public class OSSerializer {
 					
 					//Added the last parameter which should be the options //Rikard
 					//FIXME: Do this properly
-					byte[] empty = new byte[0];
-					aad.Add(CBORObject.FromObject(empty));
+					aad.Add(CBORObject.FromObject(EMPTY));
 					
 					return aad.EncodeToBytes();
 				} else {
@@ -254,8 +251,7 @@ public class OSSerializer {
 						
 						//Added the last parameter which should be the options //Rikard
 						//FIXME: Do this properly
-						byte[] empty = new byte[0];
-						aad.Add(CBORObject.FromObject(empty));
+						aad.Add(CBORObject.FromObject(EMPTY));
 						
 						return aad.EncodeToBytes();
 					} else {
