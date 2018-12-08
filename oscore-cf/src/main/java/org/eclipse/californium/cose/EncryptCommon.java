@@ -107,6 +107,18 @@ public abstract class EncryptCommon extends Message {
 			throw new CoseException("Unsupported Algorithm Specified");
 		}
 	}
+	
+	//Method taken from EncryptCommon in COSE
+	//This will provide the full AAD / Encrypt0-structure //Rikard
+    private byte[] getAADBytes() {
+        CBORObject obj = CBORObject.NewArray();
+        
+        obj.Add(context);
+        if (objProtected.size() == 0) obj.Add(CBORObject.FromObject(new byte[0]));
+        else obj.Add(objProtected.EncodeToBytes());
+        obj.Add(CBORObject.FromObject(externalData));
+        return obj.EncodeToBytes();
+    }
 
 	private void AES_CCM_Decrypt(AlgorithmID alg, byte[] rgbKey) throws CoseException, IllegalStateException {
 		// validate key
@@ -127,8 +139,13 @@ public abstract class EncryptCommon extends Message {
 			throw new CoseException("IV size is incorrect");
 		}
 
+		//Modified to use the full AAD here rather than just the external AAD //Rikard
+		//Tag length (last parameter) was also changed to 8 from 0
+		byte[] aad = getAADBytes();
+		System.out.println("EncryptCommon:AES_CCM_Decrypt(): Full AAD / Encrypt0: " + DatatypeConverter.printHexBinary(aad));
+		
 		try {
-			rgbContent = CCMBlockCipher.decrypt(rgbKey, iv.GetByteString(), getExternal(), getEncryptedContent(), 0);
+			rgbContent = CCMBlockCipher.decrypt(rgbKey, iv.GetByteString(), aad, getEncryptedContent(), 8);
 		} catch (NoSuchAlgorithmException ex) {
 			throw new CoseException("Algorithm not supported", ex);
 		} catch (InvalidKeyException ex) {
@@ -141,19 +158,6 @@ public abstract class EncryptCommon extends Message {
 			throw new CoseException("Decryption failure", ex);
 		}
 	}
-	
-	//Method taken from EncryptCommon in COSE
-	//This will provide the full AAD / Encrypt0-structure //Rikard
-	//FIXME: Do for decryption
-    private byte[] getAADBytes() {
-        CBORObject obj = CBORObject.NewArray();
-        
-        obj.Add(context);
-        if (objProtected.size() == 0) obj.Add(CBORObject.FromObject(new byte[0]));
-        else obj.Add(objProtected.EncodeToBytes());
-        obj.Add(CBORObject.FromObject(externalData));
-        return obj.EncodeToBytes();
-    }
     
 	private void AES_CCM_Encrypt(AlgorithmID alg, byte[] rgbKey) throws CoseException, IllegalStateException {
 		SecureRandom random = new SecureRandom();
@@ -182,9 +186,8 @@ public abstract class EncryptCommon extends Message {
 		
 		//Modified to use the full AAD here rather than just the external AAD //Rikard
 		//Tag length (last parameter) was also changed to 8 from 0
-		//FIXME: Do the same on the decryption
 		byte[] aad = getAADBytes();
-		System.out.println("Full AAD / Encrypt0: " + DatatypeConverter.printHexBinary(aad));
+		System.out.println("EncryptCommon:AES_CCM_Encrypt(): Full AAD / Encrypt0: " + DatatypeConverter.printHexBinary(aad));
 		
 		try {
 			rgbEncrypt = CCMBlockCipher.encrypt(rgbKey, iv.GetByteString(), aad, GetContent(), 8);

@@ -106,6 +106,11 @@ public class OSSerializer {
 					} else {
 						aad.Add(processPartialIV(ctx.getReceiverSeq()));
 					}
+					
+					//Added the last parameter which should be the options //Rikard
+					//FIXME: Do this properly
+					byte[] empty = new byte[0];
+					aad.Add(CBORObject.FromObject(empty));
 
 					return aad.EncodeToBytes();
 				} else {
@@ -148,6 +153,12 @@ public class OSSerializer {
 						aad.Add(algorithms);
 						aad.Add(ctx.getSenderId());
 						aad.Add(processPartialIV(seq));
+						
+						//Added the last parameter which should be the options //Rikard
+						//FIXME: Do this properly
+						byte[] empty = new byte[0];
+						aad.Add(CBORObject.FromObject(empty));
+						
 						return aad.EncodeToBytes();
 					} else {
 						LOGGER.error(ErrorDescriptions.OPTIONSET_NULL);
@@ -194,7 +205,7 @@ public class OSSerializer {
 					aad.Add(processPartialIV(ctx.getSenderSeq()));
 					
 					//Added the last parameter which should be the options //Rikard
-					//FIXME: Do this properly and also in other equivalent methods
+					//FIXME: Do this properly
 					byte[] empty = new byte[0];
 					aad.Add(CBORObject.FromObject(empty));
 					
@@ -240,6 +251,12 @@ public class OSSerializer {
 						aad.Add(algorithms);
 						aad.Add(ctx.getRecipientId());
 						aad.Add(processPartialIV(seq));
+						
+						//Added the last parameter which should be the options //Rikard
+						//FIXME: Do this properly
+						byte[] empty = new byte[0];
+						aad.Add(CBORObject.FromObject(empty));
+						
 						return aad.EncodeToBytes();
 					} else {
 						LOGGER.error(ErrorDescriptions.OPTIONSET_NULL);

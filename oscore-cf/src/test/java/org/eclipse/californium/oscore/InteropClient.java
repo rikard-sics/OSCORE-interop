@@ -67,7 +67,7 @@ public class InteropClient {
 		config.setInt(NetworkConfig.Keys.MAX_RETRANSMIT, 0);
 		
 		
-		TEST_1a();
+		TEST_3a();
 	}
 	
 	public static void testA(OSCoreCtx ctx) throws OSException {
