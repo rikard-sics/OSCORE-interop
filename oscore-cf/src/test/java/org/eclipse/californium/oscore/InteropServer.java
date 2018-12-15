@@ -61,6 +61,8 @@ public class InteropServer {
 		OSCoreCtx ctx_D = new OSCoreCtx(master_secret, false, alg, sid, rid, kdf, 32, master_salt, id_context_D);
 
 		db.addContext(uriLocal, ctx_B); //Change for TEST_2b
+		Util.printOSCOREKeyInformation(db, uriLocal);
+		
 		OSCoreCoapStackFactory.useAsDefault();
 
 		final CoapServer server = new CoapServer(5683);

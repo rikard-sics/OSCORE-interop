@@ -21,8 +21,6 @@ package org.eclipse.californium.oscore;
 
 import java.io.ByteArrayInputStream;
 
-import javax.xml.bind.DatatypeConverter;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,11 +100,6 @@ public class ResponseDecryptor extends Decryptor {
 			LOGGER.error(ErrorDescriptions.DECRYPTION_FAILED);
 			throw new OSException(ErrorDescriptions.DECRYPTION_FAILED);
 		}
-		
-		//Added prints //Rikard
-		System.out.println("ResponseDecryptor: External AAD: " + DatatypeConverter.printHexBinary(enc.getExternal()));
-		System.out.println("ResponseDecryptor: ciphertext: " + DatatypeConverter.printHexBinary(protectedData));
-		System.out.println("ResponseDecryptor: plaintext: " + DatatypeConverter.printHexBinary(plaintext));
 		
 		OptionSet eOptions = response.getOptions();
 		eOptions = OptionJuggle.merge(eOptions, uOptions);

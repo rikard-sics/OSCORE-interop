@@ -21,8 +21,6 @@ package org.eclipse.californium.oscore;
 
 import java.io.ByteArrayInputStream;
 
-import javax.xml.bind.DatatypeConverter;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -119,12 +117,7 @@ public class RequestDecryptor extends Decryptor {
 			LOGGER.error(ErrorDescriptions.DECRYPTION_FAILED);
 			throw new CoapOSException(ErrorDescriptions.DECRYPTION_FAILED, ResponseCode.BAD_REQUEST);
 		}
-		
-		//Added prints //Rikard
-		System.out.println("RequestDecryptor: External AAD: " + DatatypeConverter.printHexBinary(enc.getExternal()));
-		System.out.println("RequestDecryptor: ciphertext: " + DatatypeConverter.printHexBinary(protectedData));
-		System.out.println("RequestDecryptor: plaintext: " + DatatypeConverter.printHexBinary(plaintext));
-		
+			
 		OptionSet eOptions = request.getOptions();
 		eOptions = OptionJuggle.merge(eOptions, uOptions);	
 		request.setOptions(eOptions);

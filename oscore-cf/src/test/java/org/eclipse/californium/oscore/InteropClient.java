@@ -91,11 +91,11 @@ public class InteropClient {
 	
 	public static void TEST_1a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 
 		String resourceUri = "/oscore/hello/1";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
 		Request r = new Request(Code.GET);
-		printCurrentKeyInformation();
 		CoapResponse resp = c.advanced(r);
 		
 		System.out.println("Original CoAP message:");
@@ -111,6 +111,7 @@ public class InteropClient {
 	
 	public static void TEST_2a() throws OSException {
 		db.addContext(baseUri, ctx_C);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		String resourceUri = "/oscore/hello/1";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
@@ -131,6 +132,7 @@ public class InteropClient {
 	
 	public static void TEST_3a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		String resourceUri = "/oscore/hello/2";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
@@ -157,6 +159,7 @@ public class InteropClient {
 
 	public static void TEST_4a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		String resourceUri = "/oscore/hello/3";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
@@ -197,6 +200,7 @@ public class InteropClient {
 	
 	public static void TEST_8a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		String resourceUri = "/oscore/hello/6";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
@@ -226,6 +230,7 @@ public class InteropClient {
 	
 	public static void TEST_9a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		String resourceUri = "/oscore/hello/7";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
@@ -261,6 +266,7 @@ public class InteropClient {
 	
 	public static void TEST_10a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		String resourceUri = "/oscore/hello/7";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
@@ -286,6 +292,7 @@ public class InteropClient {
 	
 	public static void TEST_11a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		String resourceUri = "/oscore/test";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
@@ -306,6 +313,7 @@ public class InteropClient {
 		byte[] sid_bad = new byte[] { (byte) 0xFF };
 		OSCoreCtx ctx_A_bad = new OSCoreCtx(master_secret, true, alg, sid_bad, rid, kdf, 32, master_salt, null);
 		db.addContext(baseUri, ctx_A_bad);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		String resourceUri = "/oscore/hello/1";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
@@ -326,6 +334,7 @@ public class InteropClient {
 	
 	public static void TEST_13a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		byte[] sender_key_bad = { 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
 				0x01, 0x01, 0x01, 0x01, 0x01 };
@@ -350,6 +359,7 @@ public class InteropClient {
 	
 	public static void TEST_14a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		byte[] recipient_key_bad = { 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
 				0x01, 0x01, 0x01, 0x01, 0x01 };
@@ -374,6 +384,7 @@ public class InteropClient {
 	
 	public static void TEST_15a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		int senderSeqNumberBefore = db.getContext(baseUri).getSenderSeq();
 		
@@ -414,6 +425,7 @@ public class InteropClient {
 	//Run against server without OSCORE support
 	public static void TEST_16a() throws OSException {
 		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
 		
 		String resourceUri = "/oscore/hello/coap";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
@@ -453,97 +465,22 @@ public class InteropClient {
 	
 	/** --- End of interop tests --- **/
 	
-	private static void printResponse(CoapResponse resp) {
-		if (resp != null) {
-			System.out.println("RESPONSE CODE: " + resp.getCode().name() + " " + resp.getCode());
-			if (resp.getPayload() != null) {
-				System.out.print("RESPONSE PAYLOAD: ");
-				for (byte b : resp.getPayload()) {
-					System.out.print(Integer.toHexString(b & 0xff) + " ");
-				}
-				System.out.println();
-			}
-			System.out.println("RESPONSE TEXT: " + resp.getResponseText());
-		} else {
-			System.out.println("RESPONSE IS NULL");
-		}
-	}
-	
-	/*
-	 * Method for printing the currently used key information.
-	 * It is extracted from the OSCORE context in the database
-	 * 
-	 * 
-	 */
-	private static void printCurrentKeyInformation() {
-		byte[] master_secret, master_salt, common_iv;
-		byte[] sender_id, sender_key;
-		int sender_seq_number;
-		byte[] recipient_id, recipient_key;	
+//	private static void printResponse(CoapResponse resp) {
+//		if (resp != null) {
+//			System.out.println("RESPONSE CODE: " + resp.getCode().name() + " " + resp.getCode());
+//			if (resp.getPayload() != null) {
+//				System.out.print("RESPONSE PAYLOAD: ");
+//				for (byte b : resp.getPayload()) {
+//					System.out.print(Integer.toHexString(b & 0xff) + " ");
+//				}
+//				System.out.println();
+//			}
+//			System.out.println("RESPONSE TEXT: " + resp.getResponseText());
+//		} else {
+//			System.out.println("RESPONSE IS NULL");
+//		}
+//	}
 		
-		try {
-			//Common context
-			master_secret = db.getContext(baseUri).getMasterSecret();
-			master_salt = db.getContext(baseUri).getSalt();
-			common_iv = db.getContext(baseUri).getCommonIV();
-			
-			//Sender context
-			sender_id = db.getContext(baseUri).getSenderId();
-			sender_key = db.getContext(baseUri).getSenderKey();
-			sender_seq_number = db.getContext(baseUri).getSenderSeq();
-			//sender_iv;
-			
-			//Recipient context
-			recipient_id = db.getContext(baseUri).getRecipientId();
-			recipient_key = db.getContext(baseUri).getRecipientKey();
-			//recipient_iv;
-		} catch (OSException e) {
-			System.out.println("Error retrieving OSCORE context!");
-			e.printStackTrace();
-			return;
-		}
-		
-		System.out.println("Common Context:");
-		System.out.print("\tMaster Secret: ");
-		printArrayBytes(master_secret);
-		System.out.print("\tMaster Salt: ");
-		printArrayBytes(master_salt);
-		System.out.print("\tCommon IV: ");
-		printArrayBytes(common_iv);
-		
-		System.out.println("Sender Context:");
-		System.out.print("\tSender ID: ");
-		printArrayBytes(sender_id);
-		System.out.print("\tSender Key: ");
-		printArrayBytes(sender_key);
-		System.out.print("\tSender Seq Number: ");
-		System.out.println(sender_seq_number);
-		
-		System.out.println("Recipient Context: ");
-		System.out.print("\tRecipient ID: ");
-		printArrayBytes(recipient_id);
-		System.out.print("\tRecipient Key: ");
-		printArrayBytes(recipient_key);
-		
-	}
-	
-	/*
-	 * Method for printing a byte array as hexadecimal as in the interop spec
-	 * 
-	 * 
-	 */
-	private static void printArrayBytes(byte[] array) {
-		if(array == null) {
-			System.out.println("Null");
-			return;
-		}
-
-		System.out.print("0x");
-		for(int i = 0 ; i < array.length ; i++)
-			System.out.print(String.format("%02x", array[i]));
-		System.out.println("(" + array.length + " bytes)");
-	}
-	
 	/**
 	 * Separate class to handle an OSCORE client instance
 	 * 

@@ -14,12 +14,14 @@
  *    Joakim Brorsson
  *    Ludwig Seitz (RISE SICS)
  *    Tobias Andersson (RISE SICS)
+ *    Rikard Höglund (RISE SICS)
  *    
  ******************************************************************************/
 package org.eclipse.californium.oscore;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,11 +91,32 @@ public abstract class Encryptor {
 							ctx.getIVLength());
 				}
 			}
+			
+			// ------ Prints for debugging ------ //Rikard
+			
+			String messageType = "Response: ";
+			if(isRequest) {
+				messageType = "Request: ";
+			}
 
+			System.out.println(messageType + "Partial IV: " + Util.arrayToString(partialIV));
+			System.out.println(messageType + "Common IV: " + Util.arrayToString(ctx.getCommonIV()));
+			System.out.println(messageType + "Nonce: " + Util.arrayToString(nonce));
+			System.out.println(messageType + "Sequence Number: " + ctx.getSenderSeq());
+			System.out.println(messageType + "Key: " + Util.arrayToString(key));
+			System.out.println(messageType + "Sender ID: " + Util.arrayToString(ctx.getSenderId()));
+			System.out.println(messageType + "External AAD: " + Util.arrayToString(enc.getExternal()));
+			System.out.println(messageType + "Plaintext: " + Util.arrayToString(enc.GetContent()));
+
+			// ------ Prints for debugging end ------ //Rikard
+			
 			enc.addAttribute(HeaderKeys.IV, CBORObject.FromObject(nonce), Attribute.DO_NOT_SEND);
 			enc.addAttribute(HeaderKeys.Algorithm, ctx.getAlg().AsCBOR(), Attribute.DO_NOT_SEND);
 			enc.encrypt(key);
 
+			//Debugging print for ciphertext //Rikard
+			System.out.println(messageType + "Ciphertext: " + Util.arrayToString(enc.getEncryptedContent()));
+			
 			return enc.getEncryptedContent();
 		} catch (CoseException e) {
 			LOGGER.error("COSE/Crypto exception: " + e.getMessage());

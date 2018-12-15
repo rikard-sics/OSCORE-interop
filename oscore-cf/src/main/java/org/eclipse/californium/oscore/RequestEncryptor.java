@@ -14,15 +14,12 @@
  *    Joakim Brorsson
  *    Ludwig Seitz (RISE SICS)
  *    Tobias Andersson (RISE SICS)
- *    Rikard Höglund (RISE SICS)
  *    
  ******************************************************************************/
 package org.eclipse.californium.oscore;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.xml.bind.DatatypeConverter;
 
 import org.eclipse.californium.core.coap.OptionSet;
 import org.eclipse.californium.core.coap.Request;
@@ -63,11 +60,6 @@ public class RequestEncryptor extends Encryptor {
 		Encrypt0Message enc = prepareCOSEStructure(confidential, aad);
 		byte[] cipherText = encryptAndEncode(enc, ctx, request, false);
 		compression(ctx, cipherText, request, false);
-		
-		//Added prints //Rikard
-		System.out.println("RequestEncryptor: External AAD: " + DatatypeConverter.printHexBinary(aad));
-		System.out.println("RequestEncryptor: ciphertext: " + DatatypeConverter.printHexBinary(cipherText));
-		System.out.println("RequestEncryptor: plaintext: " + DatatypeConverter.printHexBinary(enc.GetContent()));
 		
 		request.setOptions(OptionJuggle.prepareUoptions(request.getOptions()));
 

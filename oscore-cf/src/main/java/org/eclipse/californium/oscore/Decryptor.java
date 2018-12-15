@@ -14,12 +14,14 @@
  *    Joakim Brorsson
  *    Ludwig Seitz (RISE SICS)
  *    Tobias Andersson (RISE SICS)
+ *    Rikard Höglund (RISE SICS)
  *    
  ******************************************************************************/
 package org.eclipse.californium.oscore;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -123,6 +125,28 @@ public abstract class Decryptor {
 		byte[] aad = serializeAAD(message, ctx, seq);
 		
 		enc.setExternal(aad);
+		
+		// ------ Prints for debugging ------ //Rikard
+		
+		String messageType = "Response: ";
+		if(isRequest) {
+			messageType = "Request: ";
+		}
+		
+		System.out.println(messageType + "Partial IV: " + Util.arrayToString(partialIV));
+		System.out.println(messageType + "Common IV: " + Util.arrayToString(ctx.getCommonIV()));
+		System.out.println(messageType + "Nonce: " + Util.arrayToString(nonce));
+		System.out.println(messageType + "Sequence Number: " + seq);
+		System.out.println(messageType + "Key: " + Util.arrayToString(key));
+		System.out.println(messageType + "Recipient ID: " + Util.arrayToString(ctx.getRecipientId()));
+		System.out.println(messageType + "External AAD: " + Util.arrayToString(aad));
+		try {
+			System.out.println(messageType + "Ciphertext: " + Util.arrayToString(enc.getEncryptedContent()));
+		} catch (CoseException e1) {
+			System.out.println("Failed debug printing for ciphertext.");
+		}
+		
+		// ------ Prints for debugging end ------ //Rikard
 			
 		try {
 
@@ -134,6 +158,9 @@ public abstract class Decryptor {
 			LOGGER.error(ErrorDescriptions.DECRYPTION_FAILED + " " + e.getMessage());
 			throw new OSException(ErrorDescriptions.DECRYPTION_FAILED + " " + e.getMessage());
 		}
+		
+		//Debugging print for plaintext //Rikard
+		System.out.println(messageType + "Plaintext: " + Util.arrayToString(plaintext));
 		
 		return plaintext;
 	}
