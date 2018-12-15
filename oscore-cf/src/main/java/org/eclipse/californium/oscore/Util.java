@@ -34,7 +34,7 @@ public class Util {
 		StringBuilder s = new StringBuilder();
 		
 		if(array == null) {
-			s.append("NULL");
+			s.append("null");
 			return s.toString();
 		}
 
@@ -51,7 +51,7 @@ public class Util {
 	 * 
 	 */
 	public static void printOSCOREKeyInformation(HashMapCtxDB db, String baseUri) {
-		byte[] master_secret, master_salt, common_iv;
+		byte[] master_secret, master_salt, common_iv, id_context;
 		byte[] sender_id, sender_key;
 		int sender_seq_number;
 		byte[] recipient_id, recipient_key;	
@@ -61,6 +61,7 @@ public class Util {
 			master_secret = db.getContext(baseUri).getMasterSecret();
 			master_salt = db.getContext(baseUri).getSalt();
 			common_iv = db.getContext(baseUri).getCommonIV();
+			id_context = db.getContext(baseUri).getIdContext();
 			
 			//Sender context
 			sender_id = db.getContext(baseUri).getSenderId();
@@ -85,6 +86,8 @@ public class Util {
 		System.out.println(arrayToString(master_salt));
 		System.out.print("\tCommon IV: ");
 		System.out.println(arrayToString(common_iv));
+		System.out.print("\tID Context: ");
+		System.out.println(arrayToString(id_context));
 		
 		System.out.println("Sender Context:");
 		System.out.print("\tSender ID: ");

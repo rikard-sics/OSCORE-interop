@@ -358,6 +358,15 @@ public class OSCoreCtx {
 	public AlgorithmID getKdf() {
 		return kdf;
 	}
+	
+	/**
+	 * Enables getting the ID Context /Rikard
+	 * 
+	 * @return Byte array with ID Context
+	 */
+	public byte[] getIdContext() {
+		return context_id;
+	}
 
 	public int rollbackRecipientSeq() {
 		return rollback_recipient_seq;

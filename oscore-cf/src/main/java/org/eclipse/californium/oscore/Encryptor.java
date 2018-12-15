@@ -96,18 +96,23 @@ public abstract class Encryptor {
 			
 			String messageType = "Response: ";
 			if(isRequest) {
-				messageType = "Request: ";
+				messageType = "Request:  ";
 			}
 
-			System.out.println(messageType + "Partial IV: " + Util.arrayToString(partialIV));
-			System.out.println(messageType + "Common IV: " + Util.arrayToString(ctx.getCommonIV()));
-			System.out.println(messageType + "Nonce: " + Util.arrayToString(nonce));
-			System.out.println(messageType + "Sequence Number: " + ctx.getSenderSeq());
-			System.out.println(messageType + "Key: " + Util.arrayToString(key));
-			System.out.println(messageType + "Sender ID: " + Util.arrayToString(ctx.getSenderId()));
-			System.out.println(messageType + "External AAD: " + Util.arrayToString(enc.getExternal()));
-			System.out.println(messageType + "Plaintext: " + Util.arrayToString(enc.GetContent()));
-
+			System.out.println("----------------------------------------------------------");
+			System.out.println("Encrypt " + messageType + "Partial IV:\t" + Util.arrayToString(partialIV));
+			System.out.println("Encrypt " + messageType + "Common IV:\t" + Util.arrayToString(ctx.getCommonIV()));
+			System.out.println("Encrypt " + messageType + "Nonce:\t" + Util.arrayToString(nonce));
+			System.out.println("Encrypt " + messageType + "Sequence Nr.:\t" + ctx.getSenderSeq());
+			System.out.println("Encrypt " + messageType + "*Sender ID:\t" + Util.arrayToString(ctx.getSenderId()));
+			System.out.println("Encrypt " + messageType + "*Sender Key:\t" + Util.arrayToString(key));
+			System.out.println("Encrypt " + messageType + "Recipient ID:\t" + Util.arrayToString(ctx.getRecipientId()));
+			System.out.println("Encrypt " + messageType + "Recipient Key:" + Util.arrayToString(ctx.getRecipientKey()));
+			System.out.println("Encrypt " + messageType + "External AAD:\t" + Util.arrayToString(enc.getExternal()));
+			System.out.println("Encrypt " + messageType + "Plaintext:\t" + Util.arrayToString(enc.GetContent()));
+			String plaintextStr = (new String(enc.GetContent())).replaceAll("[^\\x00-\\x7F]", "_").replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", "_").replaceAll("\\p{C}", "_");
+			System.out.println("Encrypt " + messageType + "Plaintext:\t" + plaintextStr.trim());
+			
 			// ------ Prints for debugging end ------ //Rikard
 			
 			enc.addAttribute(HeaderKeys.IV, CBORObject.FromObject(nonce), Attribute.DO_NOT_SEND);
@@ -115,7 +120,8 @@ public abstract class Encryptor {
 			enc.encrypt(key);
 
 			//Debugging print for ciphertext //Rikard
-			System.out.println(messageType + "Ciphertext: " + Util.arrayToString(enc.getEncryptedContent()));
+			System.out.println("Encrypt " + messageType + "Ciphertext:\t" + Util.arrayToString(enc.getEncryptedContent()));
+			System.out.println("----------------------------------------------------------");
 			
 			return enc.getEncryptedContent();
 		} catch (CoseException e) {

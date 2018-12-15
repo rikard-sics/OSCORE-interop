@@ -130,18 +130,21 @@ public abstract class Decryptor {
 		
 		String messageType = "Response: ";
 		if(isRequest) {
-			messageType = "Request: ";
+			messageType = "Request:  ";
 		}
 		
-		System.out.println(messageType + "Partial IV: " + Util.arrayToString(partialIV));
-		System.out.println(messageType + "Common IV: " + Util.arrayToString(ctx.getCommonIV()));
-		System.out.println(messageType + "Nonce: " + Util.arrayToString(nonce));
-		System.out.println(messageType + "Sequence Number: " + seq);
-		System.out.println(messageType + "Key: " + Util.arrayToString(key));
-		System.out.println(messageType + "Recipient ID: " + Util.arrayToString(ctx.getRecipientId()));
-		System.out.println(messageType + "External AAD: " + Util.arrayToString(aad));
+		System.out.println("----------------------------------------------------------");
+		System.out.println("Decrypt " + messageType + "Partial IV:\t" + Util.arrayToString(partialIV));
+		System.out.println("Decrypt " + messageType + "Common IV:\t" + Util.arrayToString(ctx.getCommonIV()));
+		System.out.println("Decrypt " + messageType + "Nonce:\t" + Util.arrayToString(nonce));
+		System.out.println("Decrypt " + messageType + "Sequence Nr.:\t" + seq);
+		System.out.println("Decrypt " + messageType + "Sender ID:\t" + Util.arrayToString(ctx.getSenderId()));
+		System.out.println("Decrypt " + messageType + "Sender Key:\t" + Util.arrayToString(ctx.getSenderKey()));
+		System.out.println("Decrypt " + messageType + "*Recipient ID:" + Util.arrayToString(ctx.getRecipientId()));
+		System.out.println("Decrypt " + messageType + "*Recipient Key:" + Util.arrayToString(key));
+		System.out.println("Decrypt " + messageType + "External AAD:\t" + Util.arrayToString(aad));
 		try {
-			System.out.println(messageType + "Ciphertext: " + Util.arrayToString(enc.getEncryptedContent()));
+			System.out.println("Decrypt " + messageType + "Ciphertext:\t" + Util.arrayToString(enc.getEncryptedContent()));
 		} catch (CoseException e1) {
 			System.out.println("Failed debug printing for ciphertext.");
 		}
@@ -160,7 +163,10 @@ public abstract class Decryptor {
 		}
 		
 		//Debugging print for plaintext //Rikard
-		System.out.println(messageType + "Plaintext: " + Util.arrayToString(plaintext));
+		System.out.println("Decrypt " + messageType + "Plaintext:\t" + Util.arrayToString(plaintext));
+		String plaintextStr = (new String(plaintext)).replaceAll("[^\\x00-\\x7F]", "_").replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", "_").replaceAll("\\p{C}", "_");
+		System.out.println("Decrypt " + messageType + "Plaintext:\t" + plaintextStr.trim());
+		System.out.println("----------------------------------------------------------");
 		
 		return plaintext;
 	}

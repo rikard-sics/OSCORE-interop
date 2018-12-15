@@ -66,7 +66,7 @@ public class InteropClient {
 		config.setInt(NetworkConfig.Keys.MAX_RETRANSMIT, 0);
 		
 		
-		TEST_3a();
+		TEST_15a();
 	}
 
 	/** --- Interop tests follow --- **/

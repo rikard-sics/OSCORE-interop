@@ -142,7 +142,7 @@ public abstract class EncryptCommon extends Message {
 		//Modified to use the full AAD here rather than just the external AAD //Rikard
 		//Tag length (last parameter) was also changed to 8 from 0
 		byte[] aad = getAADBytes();
-		System.out.println("Full AAD / Encrypt0: " + Util.arrayToString(aad));
+		System.out.println("Full AAD / Encrypt0:\t\t" + Util.arrayToString(aad));
 		
 		try {
 			rgbContent = CCMBlockCipher.decrypt(rgbKey, iv.GetByteString(), aad, getEncryptedContent(), 8);
@@ -187,7 +187,7 @@ public abstract class EncryptCommon extends Message {
 		//Modified to use the full AAD here rather than just the external AAD //Rikard
 		//Tag length (last parameter) was also changed to 8 from 0
 		byte[] aad = getAADBytes();
-		System.out.println("Full AAD / Encrypt0: " + Util.arrayToString(aad));
+		System.out.println("Full AAD / Encrypt0:\t\t" + Util.arrayToString(aad));
 		
 		try {
 			rgbEncrypt = CCMBlockCipher.encrypt(rgbKey, iv.GetByteString(), aad, GetContent(), 8);
