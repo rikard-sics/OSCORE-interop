@@ -200,6 +200,16 @@ public class ObjectSecurityLayer extends AbstractLayer {
 	//This is needed for error messages //Rikard
 	public void receiveResponse(Exchange exchange, Response response) {
 		Request request = exchange.getCurrentRequest();
+		
+		//Added printing of debug information TODO: Remove //Rikard
+		if(!isProtected(response)) {
+			LOGGER.error("Incoming response is NOT OSCORE protected!");
+			System.err.println("Received response NOT OSCORE protected!");
+		} else {
+			LOGGER.info("Incoming response is OSCORE protected!");
+		}
+		
+		
 		if (request == null) {
 			LOGGER.error("No request tied to this response");
 			return;
