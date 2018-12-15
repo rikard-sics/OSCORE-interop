@@ -22,6 +22,16 @@ public class ExchangeCompleteException extends IllegalStateException {
 
 	private static final long serialVersionUID = 1L;
 
+	private void printExceptionCreated() {
+		//Added further debug prints on creation of exceptions TODO: Remove //Rikard
+		String exceptionName = this.getClass().toString();
+		String methodName = this.getStackTrace()[0].getMethodName();
+		String fileName = this.getStackTrace()[0].getFileName();
+		int lineNumber = this.getStackTrace()[0].getLineNumber();
+		System.err.println("Warning: Exception " + exceptionName  + " (" + this.getLocalizedMessage() +
+				")" + " in method " + methodName + " at (" + fileName + ":" + lineNumber + ")");
+	}
+
 	/**
 	 * Create new instance with message.
 	 * 
@@ -30,5 +40,6 @@ public class ExchangeCompleteException extends IllegalStateException {
 	 */
 	public ExchangeCompleteException(String message, Throwable caller) {
 		super(message, caller);
+		printExceptionCreated();
 	}
 }

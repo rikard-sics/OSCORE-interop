@@ -28,6 +28,16 @@ public class InvalidMacException extends GeneralSecurityException {
 
 	private final byte[] expected;
 	private final byte[] actual;
+
+	private void printExceptionCreated() {
+		//Added further debug prints on creation of exceptions TODO: Remove //Rikard
+		String exceptionName = this.getClass().toString();
+		String methodName = this.getStackTrace()[0].getMethodName();
+		String fileName = this.getStackTrace()[0].getFileName();
+		int lineNumber = this.getStackTrace()[0].getLineNumber();
+		System.err.println("Warning: Exception " + exceptionName  + " (" + this.getLocalizedMessage() +
+				")" + " in method " + methodName + " at (" + fileName + ":" + lineNumber + ")");
+	}
 	
 	/**
 	 * Sets the expected and actual MAC values.
@@ -39,6 +49,7 @@ public class InvalidMacException extends GeneralSecurityException {
 		super("MAC validation failed");
 		this.expected = Arrays.copyOf(expected, expected.length);
 		this.actual = Arrays.copyOf(actual, actual.length);
+		printExceptionCreated();
 	}
 
 	public final byte[] getExpected() {

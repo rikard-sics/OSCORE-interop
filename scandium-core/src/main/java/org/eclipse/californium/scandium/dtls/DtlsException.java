@@ -26,6 +26,16 @@ public class DtlsException extends RuntimeException {
 	private static final long serialVersionUID = 1L;
 	private final InetSocketAddress peer;
 
+	private void printExceptionCreated() {
+		//Added further debug prints on creation of exceptions TODO: Remove //Rikard
+		String exceptionName = this.getClass().toString();
+		String methodName = this.getStackTrace()[0].getMethodName();
+		String fileName = this.getStackTrace()[0].getFileName();
+		int lineNumber = this.getStackTrace()[0].getLineNumber();
+		System.err.println("Warning: Exception " + exceptionName  + " (" + this.getLocalizedMessage() +
+				")" + " in method " + methodName + " at (" + fileName + ":" + lineNumber + ")");
+	}
+
 	/**
 	 * Constructs a new DTLS exception with the specified detail message and peer address.
 	 * 
@@ -35,6 +45,7 @@ public class DtlsException extends RuntimeException {
 	public DtlsException(String message, InetSocketAddress peer) {
 		super(message);
 		this.peer = peer;
+		printExceptionCreated();
 	}
 
 	/**
@@ -52,6 +63,7 @@ public class DtlsException extends RuntimeException {
 	public DtlsException(String message, InetSocketAddress peer, Throwable cause) {
 		super(message, cause);
 		this.peer = peer;
+		printExceptionCreated();
 	}
 
 	/**
