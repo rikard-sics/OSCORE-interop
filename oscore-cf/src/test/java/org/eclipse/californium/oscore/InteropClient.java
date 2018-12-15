@@ -23,6 +23,9 @@ import org.eclipse.californium.core.Utils;
 import org.eclipse.californium.core.coap.CoAP.Code;
 import org.eclipse.californium.core.coap.MediaTypeRegistry;
 import org.eclipse.californium.core.coap.Request;
+import org.eclipse.californium.core.network.CoapEndpoint;
+import org.eclipse.californium.core.network.CoapEndpoint.CoapEndpointBuilder;
+import org.eclipse.californium.core.network.Endpoint;
 import org.eclipse.californium.core.network.config.NetworkConfig;
 
 import COSE.AlgorithmID;
@@ -39,7 +42,7 @@ import COSE.AlgorithmID;
 public class InteropClient {
 	
 	private final static HashMapCtxDB db = HashMapCtxDB.getInstance();
-	private final static String baseUri = "coap://[::1]";
+	private final static String baseUri = "coap://127.0.0.1";
 	private final static AlgorithmID alg = AlgorithmID.AES_CCM_16_64_128;
 	private final static AlgorithmID kdf = AlgorithmID.HKDF_HMAC_SHA_256;
 
@@ -66,7 +69,7 @@ public class InteropClient {
 		config.setInt(NetworkConfig.Keys.MAX_RETRANSMIT, 0);
 		
 		
-		TEST_15a();
+		TEST_1a_static();
 	}
 
 	/** --- Interop tests follow --- **/
@@ -96,6 +99,7 @@ public class InteropClient {
 		String resourceUri = "/oscore/hello/1";
 		OscoreClient c = new OscoreClient(baseUri + resourceUri);
 		Request r = new Request(Code.GET);
+
 		CoapResponse resp = c.advanced(r);
 		
 		System.out.println("Original CoAP message:");
@@ -465,6 +469,36 @@ public class InteropClient {
 	
 	/** --- End of interop tests --- **/
 	
+	public static void TEST_1a_static() throws OSException {
+		db.addContext(baseUri, ctx_A);
+		Util.printOSCOREKeyInformation(db, baseUri);
+
+		String resourceUri = "/oscore/hello/1";
+		OscoreClient c = new OscoreClient(baseUri + resourceUri);
+		Request r = new Request(Code.GET);
+		
+		//Set the CoAP and UDP level information to be static
+		c.c.setTimeout((long)100 * 1000);
+		CoapEndpointBuilder builder = new CoapEndpointBuilder();
+		builder.setPort(50000); //Source port
+		CoapEndpoint endp = builder.build();
+		c.c.setEndpoint(endp);
+		r.setMID(8);
+		r.setToken(new byte[] { 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22});
+		
+		CoapResponse resp = c.advanced(r);
+		
+		System.out.println("Original CoAP message:");
+		System.out.println("Uri-Path: " + c.getURI());
+		System.out.println(Utils.prettyPrint(r));
+		
+		System.out.println("Parsed CoAP response: ");
+		System.out.println("Response code:\t" + resp.getCode());
+		System.out.println("Content-Format:\t" + resp.getOptions().getContentFormat());
+		System.out.println("Payload:\t" + resp.getResponseText());
+		
+	}
+	
 //	private static void printResponse(CoapResponse resp) {
 //		if (resp != null) {
 //			System.out.println("RESPONSE CODE: " + resp.getCode().name() + " " + resp.getCode());
@@ -492,7 +526,7 @@ public class InteropClient {
 		private String uri;
 		private Code method;
 		
-		private CoapClient c;
+		public CoapClient c;
 		
 		public OscoreClient(Code method, String uri)
 		{	
