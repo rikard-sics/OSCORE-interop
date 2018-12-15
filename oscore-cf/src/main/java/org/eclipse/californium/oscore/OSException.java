@@ -36,5 +36,14 @@ public class OSException extends Exception {
 	 */
 	public OSException(String message) {
 		super(message);
+		
+		//Added further debug prints on creation of exceptions TODO: Remove //Rikard
+		String exceptionName = this.getClass().toString().replace("class org.eclipse.californium.oscore.", "");
+		String methodName = this.getStackTrace()[0].getMethodName();
+		String fileName = this.getStackTrace()[0].getFileName();
+		int lineNumber = this.getStackTrace()[0].getLineNumber();
+		System.err.println("Warning: Exception " + exceptionName  + " (" + message + ")" + " in method " + 
+				methodName + " at (" + fileName + ":" + lineNumber + ")");
+		
 	}
 }
