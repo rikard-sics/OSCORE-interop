@@ -20,7 +20,6 @@
 package org.eclipse.californium.oscore;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,8 +41,6 @@ public class OSSerializer {
 
 	private static final byte[] ONE_ZERO = new byte[] { 0x00 };
 	private static final byte[] EMPTY = new byte[0];
-	private static final byte[] ZEROS = new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-			0x00, 0x00 };
 
 	/**
 	 * The logger

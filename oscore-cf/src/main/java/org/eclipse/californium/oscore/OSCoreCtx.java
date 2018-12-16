@@ -35,8 +35,6 @@ import com.upokecenter.cbor.CBORObject;
 import COSE.AlgorithmID;
 import COSE.CoseException;
 
-import org.eclipse.californium.core.Utils;
-
 /**
  * 
  * Represents the Security Context and its parameters. At initiation derives the

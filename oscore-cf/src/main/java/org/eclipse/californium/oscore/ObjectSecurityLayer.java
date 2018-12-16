@@ -239,7 +239,7 @@ public class ObjectSecurityLayer extends AbstractLayer {
 		return exchange.getCryptographicContextID() != null;
 	}
 
-	//This method must be rewritten or removed since it seems to me you can never know //Rikard
+/*	//This method must be rewritten or removed since it seems to me you can never know (FIXME) //Rikard
 	//Unprotected responses must be allowed for error messages //Rikard
 	private static boolean responseShouldBeProtected(Exchange exchange, Response response) throws OSException {
 		Request request = exchange.getCurrentRequest();
@@ -264,7 +264,7 @@ public class ObjectSecurityLayer extends AbstractLayer {
 			}
 		}
 		return exchange.getCryptographicContextID() != null;
-	}
+	}*/
 
 	private static boolean shouldProtectRequest(Request request) {
 		OptionSet options = request.getOptions();
