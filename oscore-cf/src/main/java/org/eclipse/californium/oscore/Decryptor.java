@@ -231,7 +231,16 @@ public abstract class Decryptor {
 	protected static Encrypt0Message decompression(byte[] cipherText, Message message) throws OSException {
 		Encrypt0Message enc = new Encrypt0Message(false, true);
 
-		decodeObjectSecurity(message, enc);
+		//Rikard: Added try-catch for ArrayIndexOutOfBoundsException
+		try {
+			decodeObjectSecurity(message, enc);
+		} catch (OSException e) {
+			LOGGER.error(e.getMessage());
+			throw new OSException(e.getMessage());
+		} catch (ArrayIndexOutOfBoundsException e) {
+			LOGGER.error("Array index out of bounds during decoding of message.");
+			e.printStackTrace();
+		}
 
 		if (cipherText != null)
 			enc.setEncryptedContent(cipherText);
@@ -244,8 +253,11 @@ public abstract class Decryptor {
 	 * @param message the received message
 	 * @param enc the Encrypt0Message object
 	 * @throws OSException
+	 * @throws ArrayIndexOutOfBoundsException
+	 * 
+	 * Rikard: Added throw of ArrayIndexOutOfBoundsException
 	 */
-	private static void decodeObjectSecurity(Message message, Encrypt0Message enc) throws OSException {
+	private static void decodeObjectSecurity(Message message, Encrypt0Message enc) throws OSException, ArrayIndexOutOfBoundsException {
 		byte[] total = message.getOptions().getOscore();
 
 		byte flagByte = total[0];
@@ -295,6 +307,7 @@ public abstract class Decryptor {
 			if (kid != null)
 				enc.addAttribute(HeaderKeys.KID, CBORObject.FromObject(kid), Attribute.UNPROTECTED);
 		} catch (CoseException e) {
+			LOGGER.error("COSE processing of message failed.");
 			e.printStackTrace();
 		}
 	}
