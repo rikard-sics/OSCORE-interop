@@ -62,8 +62,7 @@ public class InteropClient {
 		ctx_A = new OSCoreCtx(master_secret, true, alg, sid, rid, kdf, 32, master_salt, null);
 		ctx_C = new OSCoreCtx(master_secret, true, alg, sid, rid, kdf, 32, master_salt, id_context_C);
 
-		//Avoid CoAP retransmissions
-		//(Should no longer be needed)
+		//Avoid CoAP retransmissions (Should no longer be needed)
 		NetworkConfig config = NetworkConfig.getStandard();
 		config.setInt(NetworkConfig.Keys.MAX_RETRANSMIT, 0);
 		//Set timeout to be 4 seconds

@@ -239,15 +239,15 @@ public abstract class Decryptor {
 	protected static Encrypt0Message decompression(byte[] cipherText, Message message) throws OSException {
 		Encrypt0Message enc = new Encrypt0Message(false, true);
 
-		//Rikard: Added try-catch for ArrayIndexOutOfBoundsException
+		//Rikard: Added try-catch for general Exception. The array manipulation can cause exceptions.
 		try {
 			decodeObjectSecurity(message, enc);
 		} catch (OSException e) {
 			LOGGER.error(e.getMessage());
 			throw new OSException(e.getMessage());
-		} catch (ArrayIndexOutOfBoundsException e) {
-			LOGGER.error("Array index out of bounds during decoding of message.");
-			e.printStackTrace();
+		} catch (Exception e) {
+			LOGGER.error("Failed to decode object security option.");
+			throw new OSException("Failed to decode object security option.");
 		}
 
 		if (cipherText != null)
@@ -263,9 +263,8 @@ public abstract class Decryptor {
 	 * @throws OSException
 	 * @throws ArrayIndexOutOfBoundsException
 	 * 
-	 * Rikard: Added throw of ArrayIndexOutOfBoundsException
 	 */
-	private static void decodeObjectSecurity(Message message, Encrypt0Message enc) throws OSException, ArrayIndexOutOfBoundsException {
+	private static void decodeObjectSecurity(Message message, Encrypt0Message enc) throws OSException {
 		byte[] total = message.getOptions().getOscore();
 
 		/**
@@ -319,10 +318,12 @@ public abstract class Decryptor {
 		}
 
 		try {
-			if (partialIV != null)
+			if (partialIV != null) {
 				enc.addAttribute(HeaderKeys.PARTIAL_IV, CBORObject.FromObject(partialIV), Attribute.UNPROTECTED);
-			if (kid != null)
+			}
+			if (kid != null) {
 				enc.addAttribute(HeaderKeys.KID, CBORObject.FromObject(kid), Attribute.UNPROTECTED);
+			}
 		} catch (CoseException e) {
 			LOGGER.error("COSE processing of message failed.");
 			e.printStackTrace();
