@@ -260,6 +260,15 @@ public abstract class Decryptor {
 	private static void decodeObjectSecurity(Message message, Encrypt0Message enc) throws OSException, ArrayIndexOutOfBoundsException {
 		byte[] total = message.getOptions().getOscore();
 
+		/**
+		 * Rikard: If the OSCORE option value is a zero length byte array
+		 * it represents a byte array of length 1 with a byte 0x00
+		 * See https://tools.ietf.org/html/draft-ietf-core-object-security-15#page-33 point 4  
+		 */
+		if(total.length == 0) {
+			total = new byte[] { 0x00 };
+		}
+		
 		byte flagByte = total[0];
 
 		int n = flagByte & 0x07;
