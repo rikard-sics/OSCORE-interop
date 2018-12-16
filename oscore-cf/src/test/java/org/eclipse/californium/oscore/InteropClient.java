@@ -25,7 +25,6 @@ import org.eclipse.californium.core.coap.MediaTypeRegistry;
 import org.eclipse.californium.core.coap.Request;
 import org.eclipse.californium.core.network.CoapEndpoint;
 import org.eclipse.californium.core.network.CoapEndpoint.CoapEndpointBuilder;
-import org.eclipse.californium.core.network.Endpoint;
 import org.eclipse.californium.core.network.config.NetworkConfig;
 
 import COSE.AlgorithmID;
@@ -67,9 +66,11 @@ public class InteropClient {
 		//(Should no longer be needed)
 		NetworkConfig config = NetworkConfig.getStandard();
 		config.setInt(NetworkConfig.Keys.MAX_RETRANSMIT, 0);
+		//Set timeout to be 4 seconds
+		config.setInt(NetworkConfig.Keys.ACK_TIMEOUT, 4000);
 		
 		
-		TEST_1a_static();
+		TEST_9a();
 	}
 
 	/** --- Interop tests follow --- **/
@@ -84,6 +85,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -105,6 +112,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -126,6 +139,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -148,6 +167,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -175,6 +200,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -221,6 +252,12 @@ public class InteropClient {
 			System.out.print(String.format("0x%02x", r.getPayload()[i]));
 		System.out.println("");
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -252,11 +289,16 @@ public class InteropClient {
 			System.out.print(String.format("0x%02x", r.getPayload()[i]));
 		System.out.println("");
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
-		System.out.println("Content-Format:\t" + resp.getOptions().getContentFormat());
-		System.out.print("ETag:\t");
+		System.out.print("ETag:\t\t");
 		for(int i = 0 ; i < resp.getOptions().getETagCount() ; i++)
 			for(int n = 0 ; n < resp.getOptions().getETags().get(i).length ; n++)
 				System.out.print(String.format("0x%02x", resp.getOptions().getETags().get(i)[n]));
@@ -288,6 +330,12 @@ public class InteropClient {
 			System.out.print(String.format("0x%02x", r.getPayload()[i]));
 		System.out.println("");
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -307,6 +355,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -328,6 +382,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -353,6 +413,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -378,6 +444,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -401,6 +473,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -418,6 +496,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -440,6 +524,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -458,6 +548,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
@@ -491,6 +587,12 @@ public class InteropClient {
 		System.out.println("Original CoAP message:");
 		System.out.println("Uri-Path: " + c.getURI());
 		System.out.println(Utils.prettyPrint(r));
+		System.out.println("");
+		
+		if(resp == null) {
+			System.out.println("ERROR: Client application received no response!");
+			return;
+		}
 		
 		System.out.println("Parsed CoAP response: ");
 		System.out.println("Response code:\t" + resp.getCode());
