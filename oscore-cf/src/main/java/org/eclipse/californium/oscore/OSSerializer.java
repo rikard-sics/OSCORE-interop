@@ -271,6 +271,7 @@ public class OSSerializer {
 
 	/**
 	 * Generates the nonce.
+	 * See https://core-wg.github.io/oscoap/draft-ietf-core-object-security.html#nonce
 	 * 
 	 * @param partialIV
 	 * @param senderID

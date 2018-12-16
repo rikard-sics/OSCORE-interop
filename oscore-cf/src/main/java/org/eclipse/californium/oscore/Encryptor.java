@@ -87,7 +87,7 @@ public abstract class Encryptor {
 				} else {
 					// response' creates its own partialIV
 					partialIV = OSSerializer.processPartialIV(ctx.getSenderSeq());
-					nonce = OSSerializer.nonceGeneration(partialIV, ctx.getRecipientId(), ctx.getCommonIV(),
+					nonce = OSSerializer.nonceGeneration(partialIV, ctx.getSenderId(), ctx.getCommonIV(),
 							ctx.getIVLength());
 				}
 			}
