@@ -135,7 +135,9 @@ public abstract class Decryptor {
 		}
 		
 		System.out.println("----------------------------------------------------------");
-		//PartialIV value can vary depending on situation, also it is overwritten with expansion above
+		//The PartialIV value can vary depending on the situation. It is also overwritten with
+		//expansion above. The partialIV is either the content in the OSCORE header (temp.GetByteString())
+		//or the saved sequence number (seqByToken).
 		CBORObject temp = enc.findAttribute(HeaderKeys.PARTIAL_IV);
 		if(temp != null) {
 			System.out.println("Decrypt " + messageType + "Partial IV:\t" + Util.arrayToString(temp.GetByteString()));
