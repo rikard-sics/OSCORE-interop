@@ -108,8 +108,9 @@ public abstract class Decryptor {
 				// this should use the partialIV that arrived in the request and
 				// not the response
 				seq = seqByToken;
-				nonce = OSSerializer.nonceGeneration(ByteBuffer.allocate(INTEGER_BYTES).putInt(seqByToken).array(),
-						ctx.getSenderId(), ctx.getCommonIV(), ctx.getIVLength());
+				partialIV = ByteBuffer.allocate(INTEGER_BYTES).putInt(seqByToken).array();
+				nonce = OSSerializer.nonceGeneration(partialIV,	ctx.getSenderId(), ctx.getCommonIV(), 
+						ctx.getIVLength());
 			} else {
 				
 				partialIV = tmp.GetByteString();
@@ -134,7 +135,14 @@ public abstract class Decryptor {
 		}
 		
 		System.out.println("----------------------------------------------------------");
-		System.out.println("Decrypt " + messageType + "Partial IV:\t" + Util.arrayToString(partialIV));
+		//PartialIV value can vary depending on situation, also it is overwritten with expansion above
+		CBORObject temp = enc.findAttribute(HeaderKeys.PARTIAL_IV);
+		if(temp != null) {
+			System.out.println("Decrypt " + messageType + "Partial IV:\t" + Util.arrayToString(temp.GetByteString()));
+		} else {
+			double byteLength = (seqByToken == 0) ? 1 : Math.ceil((Math.log(seqByToken) / Math.log(16)));
+			System.out.println("Decrypt " + messageType + "Partial IV:\t" + String.format("%02X", seqByToken) + " (" + (int)byteLength + " bytes)");
+		}
 		System.out.println("Decrypt " + messageType + "Common IV:\t" + Util.arrayToString(ctx.getCommonIV()));
 		System.out.println("Decrypt " + messageType + "Nonce:\t" + Util.arrayToString(nonce));
 		System.out.println("Decrypt " + messageType + "Sequence Nr.:\t" + seq);
