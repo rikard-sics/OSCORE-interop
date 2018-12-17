@@ -32,6 +32,8 @@ import org.eclipse.californium.core.coap.Response;
 import org.eclipse.californium.core.network.CoapEndpoint;
 import org.eclipse.californium.core.network.CoapEndpoint.CoapEndpointBuilder;
 import org.eclipse.californium.core.network.Endpoint;
+import org.eclipse.californium.core.network.EndpointManager;
+import org.eclipse.californium.core.network.config.NetworkConfig;
 import org.eclipse.californium.core.server.resources.CoapExchange;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -67,7 +69,7 @@ public class InteropServer {
 		OSCoreCtx ctx_B = new OSCoreCtx(master_secret, false, alg, sid, rid, kdf, 32, master_salt, null);
 		OSCoreCtx ctx_D = new OSCoreCtx(master_secret, false, alg, sid, rid, kdf, 32, master_salt, id_context_D);
 
-		db.addContext(uriLocal, ctx_B); //Change to CTX_D for TEST_2b
+		db.addContext(uriLocal, ctx_B); //Change to CTX_D for TEST_2
 		Util.printOSCOREKeyInformation(db, uriLocal);
 		
 		OSCoreCoapStackFactory.useAsDefault();
@@ -75,7 +77,7 @@ public class InteropServer {
 		final CoapServer server = new CoapServer(5683);
 		
 		//Rikard: Code below is to allow binding to a specific IP on the server (for interop tests)
-		//bindServerAddress(server, "::1", 5683);
+		bindServerAll(server, 5683);
 		
 		OSCoreResource hello = new OSCoreResource("hello", true) {
 
@@ -329,7 +331,7 @@ public class InteropServer {
 	 * Rikard:
 	 * 
 	 * Method for binding a CoapServer to a specific IP-address.
-	 * The server will remove its other endpoints and only listen on this IP.
+	 * The server will first remove its other existing endpoints and only listen on this IP.
 	 * This helps for the interop tests when binding to the tunnel interface Contiki uses.
 	 * 
 	 * @param server The server to bind
@@ -352,12 +354,56 @@ public class InteropServer {
 		CoapEndpoint endp = builder.build();
 		server.addEndpoint(endp);
 		
-		System.out.print("Server bound to: ");
+		printServerEndpoints(server);
+	}
+	
+	/**
+	 * Rikard:
+	 * 
+	 * Print all endpoints that a specific CoapServer is bound to
+	 * @param server
+	 */
+	private static void printServerEndpoints(CoapServer server) {
+		System.out.println("---------------");
+		System.out.println("Server binding to: ");
+		
 		for(Endpoint e : server.getEndpoints()) {
-			boolean isIPv6 = e.getAddress().getAddress() instanceof Inet6Address;
-			System.out.println(e.getAddress().getAddress() + " Port: " + 
-					e.getAddress().getPort() +  " (IPv6: " + isIPv6 + ")");
+			InetAddress address = e.getAddress().getAddress();
+			int port = e.getAddress().getPort();
+			boolean isIPv6 = address instanceof Inet6Address;
+			String IPProtocol =  (isIPv6 == true) ? "IPv6" : "IPv4";
+			
+			System.out.println(String.format("%-39s", address) + "\tPort: " + 
+					String.format("%-5s", port) +  "\t" + IPProtocol);
 		}
+		
+		System.out.println("---------------");
+	}
+	
+	/**
+	 * Rikard:
+	 * 
+	 * Method for binding a CoapServer to all available IP-addresses.
+	 * The server will first remove its other existing endpoints
+	 * This helps for the interop tests when communicating with boards running Contiki
+	 * 
+	 * @param server The server to bind
+	 * @param port The port to bind to
+	 */
+	private static void bindServerAll(CoapServer server, int port) {
+		server.getEndpoints().clear();
+		NetworkConfig config = NetworkConfig.getStandard();
+		
+		for (InetAddress addr : EndpointManager.getEndpointManager().getNetworkInterfaces()) {
+			InetSocketAddress bindToAddress = new InetSocketAddress(addr, port);
+			CoapEndpoint.CoapEndpointBuilder builder = new CoapEndpoint.CoapEndpointBuilder();
+			
+			builder.setInetSocketAddress(bindToAddress);
+			builder.setNetworkConfig(config);
+			server.addEndpoint(builder.build());
+		}
+
+		printServerEndpoints(server);		
 	}
 }
 
