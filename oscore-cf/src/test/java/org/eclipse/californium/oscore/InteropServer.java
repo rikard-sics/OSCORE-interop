@@ -27,10 +27,11 @@ import org.eclipse.californium.core.CoapResource;
 import org.eclipse.californium.core.CoapServer;
 import org.eclipse.californium.core.Utils;
 import org.eclipse.californium.core.coap.CoAP.ResponseCode;
-import org.eclipse.californium.core.network.CoapEndpoint;
-import org.eclipse.californium.core.network.CoapEndpoint.CoapEndpointBuilder;
 import org.eclipse.californium.core.coap.MediaTypeRegistry;
 import org.eclipse.californium.core.coap.Response;
+import org.eclipse.californium.core.network.CoapEndpoint;
+import org.eclipse.californium.core.network.CoapEndpoint.CoapEndpointBuilder;
+import org.eclipse.californium.core.network.Endpoint;
 import org.eclipse.californium.core.server.resources.CoapExchange;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -73,26 +74,9 @@ public class InteropServer {
 
 		final CoapServer server = new CoapServer(5683);
 		
-		CoapEndpointBuilder builder = new CoapEndpointBuilder();
-		InetAddress address = null;
-		try {
-			address = InetAddress.getByName("[aaaa::1]");
-		} catch (UnknownHostException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+		//Rikard: Code below is to allow binding to a specific IP on the server (for interop tests)
+		//bindServerAddress(server, "::1", 5683);
 		
-		if(address instanceof Inet6Address) {
-			System.out.println("IPV6");
-		}
-		
-		int port = 50000;
-		InetSocketAddress socketAddress = new InetSocketAddress(address, port);
-		builder.setInetSocketAddress(socketAddress);
-		CoapEndpoint endp = builder.build();
-		server.addEndpoint(endp);
-
-
 		OSCoreResource hello = new OSCoreResource("hello", true) {
 
 			@Override
@@ -340,4 +324,40 @@ public class InteropServer {
 		
 		server.start();
 	}
+	
+	/**
+	 * Rikard:
+	 * 
+	 * Method for binding a CoapServer to a specific IP-address.
+	 * The server will remove its other endpoints and only listen on this IP.
+	 * This helps for the interop tests when binding to the tunnel interface Contiki uses.
+	 * 
+	 * @param server The server to bind
+	 * @param bindAddress The IP to bind to
+	 * @param port The port to bind to
+	 */
+	private static void bindServerAddress(CoapServer server, String bindAddress, int port) {
+		server.getEndpoints().clear();
+		CoapEndpointBuilder builder = new CoapEndpointBuilder();
+		InetAddress address = null;
+		try {
+			address = InetAddress.getByName(bindAddress);
+		} catch (UnknownHostException e) {
+			System.out.println("Failed to bind to address");
+			e.printStackTrace();
+		}
+
+		InetSocketAddress socketAddress = new InetSocketAddress(address, port);
+		builder.setInetSocketAddress(socketAddress);
+		CoapEndpoint endp = builder.build();
+		server.addEndpoint(endp);
+		
+		System.out.print("Server bound to: ");
+		for(Endpoint e : server.getEndpoints()) {
+			boolean isIPv6 = e.getAddress().getAddress() instanceof Inet6Address;
+			System.out.println(e.getAddress().getAddress() + " Port: " + 
+					e.getAddress().getPort() +  " (IPv6: " + isIPv6 + ")");
+		}
+	}
 }
+

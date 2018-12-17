@@ -218,9 +218,9 @@ public class ObjectSecurityLayer extends AbstractLayer {
 		//Added printing of debug information TODO: Remove //Rikard
 		if(!isProtected(response)) {
 			LOGGER.error("Incoming response is NOT OSCORE protected!");
-			System.err.println("Received response NOT OSCORE protected!");
+			System.err.println("Received response NOT OSCORE protected!"); //TODO: Remove
 		} else {
-			LOGGER.info("Incoming response is OSCORE protected!");
+			LOGGER.info("Incoming response is OSCORE protected");
 		}
 		
 		

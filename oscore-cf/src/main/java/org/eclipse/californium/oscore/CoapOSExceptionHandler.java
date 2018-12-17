@@ -105,9 +105,9 @@ public class CoapOSExceptionHandler {
 			throw new NullPointerException(ErrorDescriptions.ERROR_MESS_NULL);
 		}
 		
-		//Reply with ACK message on decryption failure
-		if(errMess == ErrorDescriptions.DECRYPTION_FAILED) {
-			LOGGER.error("Replying with empty ACK message");
+		//Rikard: Reply with empty ACK when decryption of Response fails
+		if(errMess.equals(ErrorDescriptions.DECRYPTION_FAILED)) {
+			LOGGER.info("Sending empty ACK message due to Response decryption failure");
 			return EmptyMessage.newACK(response);
 		}
 
@@ -116,7 +116,7 @@ public class CoapOSExceptionHandler {
 			return null;
 		}
 		
-		LOGGER.error("Replying with empty RST message");
+		LOGGER.info("Sending empty RST message");
 		return EmptyMessage.newRST(response);
 	}
 }
