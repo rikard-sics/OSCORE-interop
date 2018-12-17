@@ -69,7 +69,7 @@ public class InteropClient {
 		config.setInt(NetworkConfig.Keys.ACK_TIMEOUT, 4000);
 		
 		
-		TEST_1a_static();
+		TEST_14a();
 	}
 
 	/** --- Interop tests follow --- **/

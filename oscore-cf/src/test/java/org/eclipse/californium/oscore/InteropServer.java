@@ -17,12 +17,18 @@
  ******************************************************************************/
 package org.eclipse.californium.oscore;
 
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.util.List;
 
 import org.eclipse.californium.core.CoapResource;
 import org.eclipse.californium.core.CoapServer;
 import org.eclipse.californium.core.Utils;
 import org.eclipse.californium.core.coap.CoAP.ResponseCode;
+import org.eclipse.californium.core.network.CoapEndpoint;
+import org.eclipse.californium.core.network.CoapEndpoint.CoapEndpointBuilder;
 import org.eclipse.californium.core.coap.MediaTypeRegistry;
 import org.eclipse.californium.core.coap.Response;
 import org.eclipse.californium.core.server.resources.CoapExchange;
@@ -66,6 +72,26 @@ public class InteropServer {
 		OSCoreCoapStackFactory.useAsDefault();
 
 		final CoapServer server = new CoapServer(5683);
+		
+		CoapEndpointBuilder builder = new CoapEndpointBuilder();
+		InetAddress address = null;
+		try {
+			address = InetAddress.getByName("[aaaa::1]");
+		} catch (UnknownHostException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		if(address instanceof Inet6Address) {
+			System.out.println("IPV6");
+		}
+		
+		int port = 50000;
+		InetSocketAddress socketAddress = new InetSocketAddress(address, port);
+		builder.setInetSocketAddress(socketAddress);
+		CoapEndpoint endp = builder.build();
+		server.addEndpoint(endp);
+
 
 		OSCoreResource hello = new OSCoreResource("hello", true) {
 
