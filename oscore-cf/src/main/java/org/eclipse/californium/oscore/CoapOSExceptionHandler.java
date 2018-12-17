@@ -104,11 +104,19 @@ public class CoapOSExceptionHandler {
 			LOGGER.error(ErrorDescriptions.ERROR_MESS_NULL);
 			throw new NullPointerException(ErrorDescriptions.ERROR_MESS_NULL);
 		}
+		
+		//Reply with ACK message on decryption failure
+		if(errMess == ErrorDescriptions.DECRYPTION_FAILED) {
+			LOGGER.error("Replying with empty ACK message");
+			return EmptyMessage.newACK(response);
+		}
 
 		if (!response.isConfirmable()) {
 			LOGGER.error("An Empty Message will not be created");
 			return null;
 		}
+		
+		LOGGER.error("Replying with empty RST message");
 		return EmptyMessage.newRST(response);
 	}
 }
