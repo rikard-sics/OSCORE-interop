@@ -32,8 +32,8 @@ import org.eclipse.californium.core.coap.CoAP.Code;
 
 import com.upokecenter.cbor.CBORObject;
 
-import COSE.AlgorithmID;
-import COSE.CoseException;
+import org.eclipse.californium.cose.AlgorithmID;
+import org.eclipse.californium.cose.CoseException;
 
 /**
  * 
@@ -110,7 +110,7 @@ public class OSCoreCtx {
 			AlgorithmID kdf, Integer replay_size, byte[] master_salt, byte[] contextId) throws OSException {
 
 		if (alg == null) {
-			this.common_alg = COSE.AlgorithmID.AES_CCM_16_64_128;
+			this.common_alg = AlgorithmID.AES_CCM_16_64_128;
 		} else {
 			this.common_alg = alg;
 		}
@@ -147,7 +147,7 @@ public class OSCoreCtx {
 		}
 
 		if (kdf == null) {
-			this.kdf = COSE.AlgorithmID.HKDF_HMAC_SHA_256;
+			this.kdf = AlgorithmID.HKDF_HMAC_SHA_256;
 		} else {
 			this.kdf = kdf;
 		}

@@ -38,7 +38,7 @@ import org.eclipse.californium.core.server.resources.CoapExchange;
 import java.util.Timer;
 import java.util.TimerTask;
 
-import COSE.AlgorithmID;
+import org.eclipse.californium.cose.AlgorithmID;
 
 /** 
  * InteropServer for performing interop testing

@@ -37,12 +37,6 @@ package org.eclipse.californium.cose;
 import com.upokecenter.cbor.CBORObject;
 import com.upokecenter.cbor.CBORType;
 
-import COSE.AlgorithmID;
-import COSE.Attribute;
-import COSE.CoseException;
-import COSE.HeaderKeys;
-import COSE.Message;
-
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;

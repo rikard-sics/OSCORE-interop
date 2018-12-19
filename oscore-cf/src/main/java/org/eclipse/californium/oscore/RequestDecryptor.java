@@ -39,7 +39,7 @@ import org.eclipse.californium.oscore.OptionJuggle;
 import com.upokecenter.cbor.CBORObject;
 import com.upokecenter.cbor.CBORType;
 
-import COSE.HeaderKeys;
+import org.eclipse.californium.cose.HeaderKeys;
 
 /**
  * 

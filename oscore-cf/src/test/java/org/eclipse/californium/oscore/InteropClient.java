@@ -27,7 +27,7 @@ import org.eclipse.californium.core.network.CoapEndpoint;
 import org.eclipse.californium.core.network.CoapEndpoint.CoapEndpointBuilder;
 import org.eclipse.californium.core.network.config.NetworkConfig;
 
-import COSE.AlgorithmID;
+import org.eclipse.californium.cose.AlgorithmID;
 
 /**
  * OSCORE Client for interop testing
@@ -69,7 +69,7 @@ public class InteropClient {
 		config.setInt(NetworkConfig.Keys.ACK_TIMEOUT, 4000);
 		
 		
-		TEST_1a();
+		TEST_10a();
 	}
 
 	/** --- Interop tests follow --- **/

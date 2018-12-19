@@ -34,9 +34,9 @@ import org.eclipse.californium.cose.Encrypt0Message;
 
 import com.upokecenter.cbor.CBORObject;
 
-import COSE.Attribute;
-import COSE.CoseException;
-import COSE.HeaderKeys;
+import org.eclipse.californium.cose.Attribute;
+import org.eclipse.californium.cose.CoseException;
+import org.eclipse.californium.cose.HeaderKeys;
 
 /**
  * 
