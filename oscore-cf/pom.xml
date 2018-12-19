@@ -18,12 +18,6 @@
 			<artifactId>californium-core</artifactId>
 		</dependency>
 		<dependency>
-			<!-- requires java 1.8 -->
-			<groupId>com.augustcellars.cose</groupId>
-			<artifactId>cose-java</artifactId>
-			<version>${cose.version}</version>
-		</dependency>
-		<dependency>
 			<groupId>org.eclipse.californium</groupId>
 			<artifactId>scandium</artifactId>
 		</dependency>
