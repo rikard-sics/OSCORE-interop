@@ -85,6 +85,7 @@ public class SecureBlockwiseTest {
 	@After
 	public void shutdownServer() {
 		server.destroy();
+		EndpointManager.reset();
 		System.out.println("End " + getClass().getSimpleName());
 	}
 
@@ -125,6 +126,7 @@ public class SecureBlockwiseTest {
 		pskStore = new TestUtilPskStore(IDENITITY, KEY.getBytes());
 		DtlsConnectorConfig dtlsConfig = new DtlsConnectorConfig.Builder()
 				.setAddress(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
+				.setLoggingTag("server")
 				.setReceiverThreadCount(2)
 				.setConnectionThreadCount(2)
 				.setPskStore(pskStore).build();
@@ -136,7 +138,7 @@ public class SecureBlockwiseTest {
 				.setInt(Keys.PREFERRED_BLOCK_SIZE, DEFAULT_BLOCK_SIZE)
 				.setString(Keys.RESPONSE_MATCHING, mode.name());
 		serverConnector = new DTLSConnector(dtlsConfig);
-		CoapEndpoint.CoapEndpointBuilder builder = new CoapEndpoint.CoapEndpointBuilder();
+		CoapEndpoint.Builder builder = new CoapEndpoint.Builder();
 		builder.setConnector(serverConnector);
 		builder.setNetworkConfig(config);
 		serverEndpoint = builder.build();
@@ -152,11 +154,12 @@ public class SecureBlockwiseTest {
 		// prepare secure client endpoint
 		DtlsConnectorConfig clientdtlsConfig = new DtlsConnectorConfig.Builder()
 				.setAddress(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
+				.setLoggingTag("client")
 				.setReceiverThreadCount(2)
 				.setConnectionThreadCount(2)
 				.setPskStore(pskStore).build();
 		clientConnector = new DTLSConnector(clientdtlsConfig);
-		builder = new CoapEndpoint.CoapEndpointBuilder();
+		builder = new CoapEndpoint.Builder();
 		builder.setConnector(clientConnector);
 		builder.setNetworkConfig(config);
 		clientEndpoint = builder.build();

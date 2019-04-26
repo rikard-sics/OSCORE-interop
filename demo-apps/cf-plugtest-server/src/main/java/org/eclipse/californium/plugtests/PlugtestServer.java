@@ -79,6 +79,8 @@ public class PlugtestServer extends AbstractTestServer {
 
 		@Override
 		public void applyDefaults(NetworkConfig config) {
+			config.setInt(Keys.DTLS_AUTO_RESUME_TIMEOUT, 0);
+			config.setInt(Keys.DTLS_CONNECTION_ID_LENGTH, 6);
 			config.setInt(Keys.MAX_RESOURCE_BODY_SIZE, DEFAULT_MAX_RESOURCE_SIZE);
 			config.setInt(Keys.MAX_MESSAGE_SIZE, DEFAULT_BLOCK_SIZE);
 			config.setInt(Keys.PREFERRED_BLOCK_SIZE, DEFAULT_BLOCK_SIZE);
@@ -86,9 +88,8 @@ public class PlugtestServer extends AbstractTestServer {
 			config.setInt(Keys.NOTIFICATION_CHECK_INTERVAL_TIME, 30000);
 			config.setInt(Keys.HEALTH_STATUS_INTERVAL, 300);
 		}
-		
 	};
-	
+
 	public static void main(String[] args) {
 		System.out.println("\nCalifornium (Cf) Plugtest Server");
 		System.out.println("(c) 2014, Institute for Pervasive Computing, ETH Zurich");
@@ -117,7 +118,6 @@ public class PlugtestServer extends AbstractTestServer {
 			// add special interceptor for message traces
 			for (Endpoint ep : server.getEndpoints()) {
 				URI uri = ep.getUri();
-				System.out.println("listen on " + uri);
 				ep.addInterceptor(new MessageTracer());
 				// Anonymized IoT metrics for validation. On success, remove the OriginTracer.
 				ep.addInterceptor(new AnonymizedOriginTracer(uri.getPort() + "-" + uri.getScheme()));
@@ -136,7 +136,7 @@ public class PlugtestServer extends AbstractTestServer {
 	}
 
 	public PlugtestServer(NetworkConfig config) throws SocketException {
-		super(config);
+		super(config, null);
 		
 		// add resources to the server
 		add(new DefaultTest());

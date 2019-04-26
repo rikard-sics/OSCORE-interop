@@ -35,14 +35,14 @@ public class EcdhPskClientKeyExchangeTest {
 	EcdhPskClientKeyExchange msg;
 	InetSocketAddress peerAddress = new InetSocketAddress(5000);
 	byte[] ephemeralKeyPointEncoded;
-	String identity;
+	PskPublicInformation identity;
 	
 	@Before
 	public void setUp() throws Exception {
 
 		SupportedGroup usableGroup = SupportedGroup.secp256r1;
 		ECDHECryptography ecdhe = ECDHECryptography.fromNamedCurveId(usableGroup.getId());
-		msg = new EcdhPskClientKeyExchange("ID", ecdhe.getPublicKey(), peerAddress);
+		msg = new EcdhPskClientKeyExchange(new PskPublicInformation("ID"), ecdhe.getPublicKey(), peerAddress);
 		ephemeralKeyPointEncoded = msg.getEncodedPoint();
 		identity = msg.getIdentity();
 	}
@@ -56,7 +56,7 @@ public class EcdhPskClientKeyExchangeTest {
 	@Test
 	public void testDeserializedMsg() throws HandshakeException {
 		byte[] serializedMsg = msg.toByteArray();
-		HandshakeParameter parameter = new HandshakeParameter(KeyExchangeAlgorithm.ECDHE_PSK, false);
+		HandshakeParameter parameter = new HandshakeParameter(KeyExchangeAlgorithm.ECDHE_PSK, CertificateType.X_509);
 		HandshakeMessage handshakeMsg = HandshakeMessage.fromByteArray(serializedMsg, parameter, peerAddress);
 		assertTrue(((EcdhPskClientKeyExchange)handshakeMsg).getIdentity().equals(identity));
 		assertNotNull(ephemeralKeyPointEncoded);

@@ -25,26 +25,14 @@ public class HandshakeException extends Exception {
 
 	private final AlertMessage alert;
 
-	private void printExceptionCreated() {
-		//Added further debug prints on creation of exceptions TODO: Remove //Rikard
-		String exceptionName = this.getClass().toString();
-		String methodName = this.getStackTrace()[0].getMethodName();
-		String fileName = this.getStackTrace()[0].getFileName();
-		int lineNumber = this.getStackTrace()[0].getLineNumber();
-		System.err.println("Warning: Exception " + exceptionName  + " (" + this.getLocalizedMessage() +
-				")" + " in method " + methodName + " at (" + fileName + ":" + lineNumber + ")");
-	}
-
 	public HandshakeException(String message, AlertMessage alert) {
 		super(message);
 		this.alert = alert;
-		printExceptionCreated();
 	}
 
 	public HandshakeException(String message, AlertMessage alert, Throwable cause) {
 		super(message, cause);
 		this.alert = alert;
-		printExceptionCreated();
 	}
 
 	public AlertMessage getAlert() {

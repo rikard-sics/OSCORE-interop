@@ -114,6 +114,8 @@ public final class NetworkConfig {
 		public static final String EXCHANGE_LIFETIME = "EXCHANGE_LIFETIME";
 		public static final String NON_LIFETIME = "NON_LIFETIME";
 		public static final String MAX_TRANSMIT_WAIT = "MAX_TRANSMIT_WAIT";
+		public static final String MAX_LATENCY = "MAX_LATENCY";
+		public static final String MAX_SERVER_RESPONSE_DELAY = "MAX_SERVER_RESPONSE_DELAY";
 		public static final String NSTART = "NSTART";
 		public static final String LEISURE = "LEISURE";
 		public static final String PROBING_RATE = "PROBING_RATE";
@@ -121,6 +123,13 @@ public final class NetworkConfig {
 		public static final String USE_RANDOM_MID_START = "USE_RANDOM_MID_START";
 		public static final String MID_TRACKER = "MID_TACKER";
 		public static final String MID_TRACKER_GROUPS = "MID_TRACKER_GROUPS";
+		/**
+		 * Base MID for multicast MID range. All multicast requests use the same
+		 * MID provider, which generates MIDs in the range [base...65536).
+		 * None multicast request use the range [0...base).
+		 * 0 := disable multicast support.
+		 */
+		public static final String MULTICAST_BASE_MID = "MULTICAST_BASE_MID";
 		public static final String TOKEN_SIZE_LIMIT = "TOKEN_SIZE_LIMIT";
 
 		/**
@@ -169,6 +178,18 @@ public final class NetworkConfig {
 		 * {@link NetworkConfigDefaults#DEFAULT_BLOCKWISE_STATUS_LIFETIME}.
 		 */
 		public static final String BLOCKWISE_STATUS_LIFETIME = "BLOCKWISE_STATUS_LIFETIME";
+		
+		/**
+		 * Property to indicate if the response should always include the Block2 option when client request early blockwise negociation but the response can be sent on one packet.
+		 * <p>
+		 * The default value of this property is
+		 * {@link NetworkConfigDefaults#DEFAULT_BLOCKWISE_STRICT_BLOCK2_OPTION}.
+		 * <p>
+		 * A value of {@code false} indicate that the server will respond without block2 option if no further blocks are required.<br/>
+		 * A value of {@code true} indicate that the server will response with block2 option event if no further blocks are required.
+		 *  
+		 */
+		public static final String BLOCKWISE_STRICT_BLOCK2_OPTION = "BLOCKWISE_STRICT_BLOCK2_OPTION";
 
 		public static final String NOTIFICATION_CHECK_INTERVAL_TIME = "NOTIFICATION_CHECK_INTERVAL";
 		public static final String NOTIFICATION_CHECK_INTERVAL_COUNT = "NOTIFICATION_CHECK_INTERVAL_COUNT";
@@ -210,6 +231,7 @@ public final class NetworkConfig {
 		public static final String TCP_CONNECTION_IDLE_TIMEOUT = "TCP_CONNECTION_IDLE_TIMEOUT";
 		public static final String TCP_CONNECT_TIMEOUT = "TCP_CONNECT_TIMEOUT";
 		public static final String TCP_WORKER_THREADS = "TCP_WORKER_THREADS";
+		public static final String TLS_HANDSHAKE_TIMEOUT = "TLS_HANDSHAKE_TIMEOUT";
 
 		/** Properties for encryption */
 		/**
@@ -221,6 +243,31 @@ public final class NetworkConfig {
 		 * without exchanged messages, the session is forced to resume.
 		 */
 		public static final String DTLS_AUTO_RESUME_TIMEOUT = "DTLS_AUTO_RESUME_TIMEOUT";
+		/**
+		 * DTLS connection id length.
+		 * 
+		 * <a https://tools.ietf.org/html/draft-ietf-tls-dtls-connection-id-02>
+		 * draft-ietf-tls-dtls-connection-id-02</a>
+		 * 
+		 * <ul>
+		 * <li>{@code ""} disabled support for connection id.</li>
+		 * <li>{@code 0} enable support for connection id, but don't use it for
+		 * incoming traffic to this peer.</li>
+		 * <li>{@code n} use connection id of n bytes. Note: chose n large
+		 * enough for the number of considered peers. Recommended to have 100
+		 * time more values than peers. E.g. 65000 peers, chose not 2 bytes,
+		 * chose at lease 3 bytes!</li>
+		 * </ul>
+		 */
+		public static final String DTLS_CONNECTION_ID_LENGTH = "DTLS_CONNECTION_ID_LENGTH";
+		/**
+		 * If {@link #DTLS_CONNECTION_ID_LENGTH} enables the use of a connection
+		 * id, this node id could be used to configure the generation of
+		 * connection ids specific for node in a multi-node deployment
+		 * (cluster). The value is used as first byte in generated connection
+		 * ids.
+		 */
+		public static final String DTLS_CONNECTION_ID_NODE_ID = "DTLS_CONNECTION_ID_NODE_ID";
 	}
 
 	/**
@@ -357,6 +404,15 @@ public final class NetworkConfig {
 	}
 
 	/**
+	 * Instantiates a new network configuration and sets the values
+	 * from the provided configuration.
+	 */
+	public NetworkConfig(NetworkConfig config) {
+		this.properties = new Properties();
+		this.properties.putAll(config.properties);
+	}
+
+	/**
 	 * Loads properties from a file.
 	 *
 	 * For Android, please use {@link NetworkConfig#load(InputStream)}.
@@ -451,6 +507,42 @@ public final class NetworkConfig {
 	public String getString(final String key, final String defaultValue) {
 		String result = properties.getProperty(key);
 		return result != null ? result : defaultValue;
+	}
+
+	/**
+	 * Gets the Integer value for a key.
+	 *
+	 * @param key the key to look up.
+	 * @return the value for the key, or {@code null}, if this configuration
+	 *         does not contain a value for the given key or the value is not an
+	 *         integer (e.g. {@code ""}.
+	 */
+	public Integer getOptInteger(final String key) {
+		return getNumberValue(new PropertyParser<Integer>() {
+
+			@Override
+			public Integer parseValue(String value) {
+				return Integer.parseInt(value);
+			}
+		}, key, null);
+	}
+
+	/**
+	 * Gets the Long value for a key.
+	 *
+	 * @param key the key to look up.
+	 * @return the value for the key, or {@code null}, if this configuration
+	 *         does not contain a value for the given key or the value is not an
+	 *         long (e.g. {@code ""}.
+	 */
+	public Long getOptLong(final String key) {
+		return getNumberValue(new PropertyParser<Long>() {
+
+			@Override
+			public Long parseValue(String value) {
+				return Long.parseLong(value);
+			}
+		}, key, null);
 	}
 
 	/**
@@ -578,19 +670,38 @@ public final class NetworkConfig {
 	private <T> T getNumberValue(final PropertyParser<T> parser, final String key, final T defaultValue) {
 		T result = defaultValue;
 		String value = properties.getProperty(key);
-		if (value != null) {
+		if (value != null && !value.isEmpty()) {
 			try {
 				result = parser.parseValue(value);
 			} catch (NumberFormatException e) {
-				LOGGER.warn("value for key [{}] is not a {0}, returning default value",
-						new Object[] { key, defaultValue.getClass() });
+				LOGGER.warn("value for key [{}] is not a {0}, returning default value", key, defaultValue.getClass());
 			}
-		} else {
+		} else if (value == null) {
 			LOGGER.warn("key [{}] is undefined, returning default value", key);
+		} else {
+			LOGGER.warn("key [{}] is empty, returning default value", key);
 		}
 		return result;
 	}
 
+	/**
+	 * Gets the value for the specified key as boolean or the provided default value if not found.
+	 *
+	 * @param key the key
+	 * @param defaultValue the default value to return if there is no value
+	 *            registered for the key.
+	 * @return the boolean
+	 */
+	public boolean getBoolean(final String key, final boolean defaultValue) {
+		String value = properties.getProperty(key);
+		if (value != null) {
+			return Boolean.parseBoolean(value);
+		} else {
+			LOGGER.warn("Key [{}] is undefined, returning defaultValue", key);
+			return defaultValue;
+		}
+	}
+	
 	/**
 	 * Gets the value for the specified key as boolean or false if not found.
 	 *

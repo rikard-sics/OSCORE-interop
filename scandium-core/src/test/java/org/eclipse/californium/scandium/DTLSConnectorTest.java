@@ -41,11 +41,13 @@
  *    Vikram (University of Rostock) - add tests to check ECDHE_PSK CipherSuite
  *    Achim Kraus (Bosch Software Innovations GmbH) - remove HELLO_VERIFY_REQUEST
  *                                                    from resumption tests
+ *    Achim Kraus (Bosch Software Innovations GmbH) - remove unused sendRecord
+ *    Achim Kraus (Bosch Software Innovations GmbH) - move advanced tests to
+ *                                                    DTLSConnectorAdvancedTest
  ******************************************************************************/
 package org.eclipse.californium.scandium;
 
 import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.number.OrderingComparison.greaterThan;
 import static org.junit.Assert.*;
 
 import java.io.IOException;
@@ -58,7 +60,6 @@ import java.security.Principal;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -74,6 +75,8 @@ import org.eclipse.californium.elements.EndpointContext;
 import org.eclipse.californium.elements.MessageCallback;
 import org.eclipse.californium.elements.RawData;
 import org.eclipse.californium.elements.RawDataChannel;
+import org.eclipse.californium.elements.util.ExecutorsUtil;
+import org.eclipse.californium.elements.util.SerialExecutor;
 import org.eclipse.californium.elements.util.SimpleMessageCallback;
 import org.eclipse.californium.elements.auth.PreSharedKeyIdentity;
 import org.eclipse.californium.elements.auth.RawPublicKeyIdentity;
@@ -84,14 +87,12 @@ import org.eclipse.californium.scandium.config.DtlsConnectorConfig;
 import org.eclipse.californium.scandium.dtls.AlertMessage;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertDescription;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertLevel;
-import org.eclipse.californium.scandium.dtls.CertificateTypeExtension.CertificateType;
-import org.eclipse.californium.scandium.dtls.ClientHandshaker;
+import org.eclipse.californium.scandium.dtls.CertificateType;
 import org.eclipse.californium.scandium.dtls.ClientHello;
 import org.eclipse.californium.scandium.dtls.ClientKeyExchange;
 import org.eclipse.californium.scandium.dtls.CompressionMethod;
 import org.eclipse.californium.scandium.dtls.Connection;
 import org.eclipse.californium.scandium.dtls.ContentType;
-import org.eclipse.californium.scandium.dtls.DTLSFlight;
 import org.eclipse.californium.scandium.dtls.DTLSSession;
 import org.eclipse.californium.scandium.dtls.DtlsTestTools;
 import org.eclipse.californium.scandium.dtls.HandshakeException;
@@ -104,12 +105,8 @@ import org.eclipse.californium.scandium.dtls.InMemoryConnectionStore;
 import org.eclipse.californium.scandium.dtls.InMemorySessionCache;
 import org.eclipse.californium.scandium.dtls.PSKClientKeyExchange;
 import org.eclipse.californium.scandium.dtls.ProtocolVersion;
+import org.eclipse.californium.scandium.dtls.PskPublicInformation;
 import org.eclipse.californium.scandium.dtls.Record;
-import org.eclipse.californium.scandium.dtls.RecordLayer;
-import org.eclipse.californium.scandium.dtls.ResumingClientHandshaker;
-import org.eclipse.californium.scandium.dtls.ResumingServerHandshaker;
-import org.eclipse.californium.scandium.dtls.ServerHandshaker;
-import org.eclipse.californium.scandium.dtls.SessionAdapter;
 import org.eclipse.californium.scandium.dtls.SessionId;
 import org.eclipse.californium.scandium.dtls.cipher.CipherSuite;
 import org.eclipse.californium.scandium.dtls.pskstore.InMemoryPskStore;
@@ -146,7 +143,7 @@ public class DTLSConnectorTest {
 
 	private static final int CLIENT_CONNECTION_STORE_CAPACITY = 5;
 	private static final int SERVER_CONNECTION_STORE_CAPACITY = 2;
-	private static final String CLIENT_IDENTITY = "Client_identity";
+	private static final PskPublicInformation CLIENT_IDENTITY = new PskPublicInformation("Client_identity");
 	private static final String CLIENT_IDENTITY_SECRET = "secretPSK";
 	private static final int MAX_TIME_TO_WAIT_SECS = 2;
 
@@ -182,7 +179,7 @@ public class DTLSConnectorTest {
 		InMemoryPskStore pskStore = new InMemoryPskStore() {
 
 			@Override
-			public byte[] getKey(String identity) {
+			public byte[] getKey(PskPublicInformation identity) {
 				if (pskStoreLatency != 0) {
 					try {
 						Thread.sleep(pskStoreLatency);
@@ -197,17 +194,19 @@ public class DTLSConnectorTest {
 		serverConfig = new DtlsConnectorConfig.Builder()
 			.setAddress(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
 			.setSupportedCipherSuites(
-				new CipherSuite[]{
 						CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
 						CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
 						CipherSuite.TLS_PSK_WITH_AES_128_CCM_8,
 						CipherSuite.TLS_PSK_WITH_AES_128_CBC_SHA256,
-						CipherSuite.TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256})
-			.setIdentity(DtlsTestTools.getPrivateKey(), DtlsTestTools.getServerCertificateChain(), true)
+						CipherSuite.TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256)
+			.setIdentity(DtlsTestTools.getPrivateKey(), DtlsTestTools.getServerCertificateChain(), CertificateType.RAW_PUBLIC_KEY, CertificateType.X_509)
 			.setTrustStore(DtlsTestTools.getTrustedCertificates())
+			.setRpkTrustAll()
 			.setPskStore(pskStore)
 			.setClientAuthenticationRequired(true)
 			.setReceiverThreadCount(1)
+			.setServerOnly(true)
+			.setLoggingTag("server")
 			.build();
 
 		server = new DTLSConnector(serverConfig, serverConnectionStore);
@@ -238,22 +237,6 @@ public class DTLSConnectorTest {
 		clientRawDataChannel = new LatchDecrementingRawDataChannel();
 	}
 
-	public void autoResumeSetUp(int timeout) throws Exception {
-		cleanUp();
-		serverSessionCache.establishedSessionCounter.set(0);
-		pskStoreLatency = 0;
-		clientConnectionStore = new InMemoryConnectionStore(CLIENT_CONNECTION_STORE_CAPACITY, 60);
-		clientConnectionStore.setTag("client");
-		clientEndpoint = new InetSocketAddress(InetAddress.getLoopbackAddress(), 0);
-		DtlsConnectorConfig.Builder clientConfigBuilder = newStandardConfigBuilder(clientEndpoint);
-		clientConfigBuilder.setAutoResumptionTimeoutMillis(timeout);
-		clientConfig = clientConfigBuilder.build();
-		client = new DTLSConnector(clientConfig, clientConnectionStore);
-		client.setExecutor(executor);
-
-		clientRawDataChannel = new LatchDecrementingRawDataChannel();
-	}
-
 	@After
 	public void cleanUp() {
 		if (client != null) {
@@ -271,10 +254,12 @@ public class DTLSConnectorTest {
 	private static DtlsConnectorConfig.Builder newStandardConfigBuilder(InetSocketAddress bindAddress)  throws Exception {
 		return new DtlsConnectorConfig.Builder()
 				.setAddress(bindAddress)
+				.setLoggingTag("client")
 				.setReceiverThreadCount(1)
 				.setConnectionThreadCount(2)
-				.setIdentity(DtlsTestTools.getClientPrivateKey(), DtlsTestTools.getClientCertificateChain(), true)
-				.setTrustStore(DtlsTestTools.getTrustedCertificates());
+				.setIdentity(DtlsTestTools.getClientPrivateKey(), DtlsTestTools.getClientCertificateChain(), CertificateType.RAW_PUBLIC_KEY, CertificateType.X_509)
+				.setTrustStore(DtlsTestTools.getTrustedCertificates())
+				.setRpkTrustAll();
 	}
 
 	@Test
@@ -388,7 +373,6 @@ public class DTLSConnectorTest {
 
 			// Send CLIENT_HELLO with cookie
 			clientHello.setCookie(cookie);
-			clientHello.setFragmentLength(clientHello.getMessageLength());
 			rawClient.sendRecord(serverEndpoint,
 					DtlsTestTools.newDTLSRecord(ContentType.HANDSHAKE.getCode(), 0, 0, clientHello.toByteArray()));
 
@@ -460,7 +444,6 @@ public class DTLSConnectorTest {
 
 			// Send CLIENT_HELLO with cookie
 			clientHello.setCookie(cookie);
-			clientHello.setFragmentLength(clientHello.getMessageLength());
 			rawClient.sendRecord(serverEndpoint,
 					DtlsTestTools.newDTLSRecord(ContentType.HANDSHAKE.getCode(), 0, 0, clientHello.toByteArray()));
 
@@ -514,7 +497,7 @@ public class DTLSConnectorTest {
 			
 			@Override
 			public void handleData(byte[] data) {
-				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint));
+				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint, null));
 				latch.countDown();
 			}
 		};
@@ -582,6 +565,8 @@ public class DTLSConnectorTest {
 
 		// WHEN starting a new handshake (epoch 0) reusing the same client IP
 		clientConfig = newStandardConfig(clientEndpoint);
+		clientConnectionStore = new InMemoryConnectionStore(CLIENT_CONNECTION_STORE_CAPACITY, 60);
+		clientConnectionStore.setTag("client");
 		client = new DTLSConnector(clientConfig, clientConnectionStore);
 
 		// THEN assert that the handshake succeeds and a session is established
@@ -600,7 +585,7 @@ public class DTLSConnectorTest {
 		LatchDecrementingDataHandler handler = new LatchDecrementingDataHandler(latch) {
 			@Override
 			public boolean handle(byte[] data) {
-				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint));
+				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint, null));
 				return true;
 			}
 		};
@@ -634,7 +619,6 @@ public class DTLSConnectorTest {
 			latch = new CountDownLatch(1);
 			handler.setLatch(latch);
 			clientHello.setCookie(cookie);
-			clientHello.setFragmentLength(clientHello.getMessageLength());
 			rawClient.sendRecord(
 					serverEndpoint,
 					DtlsTestTools.newDTLSRecord(ContentType.HANDSHAKE.getCode(), 0, 0, clientHello.toByteArray()));
@@ -682,645 +666,6 @@ public class DTLSConnectorTest {
 		}
 	}
 
-	@Test
-	public void testServerReceivingMessagesInBadOrderDuringHandshake() throws Exception {
-		// Configure and create UDP connector
-		RecordCollectorDataHandler collector = new RecordCollectorDataHandler();
-		UdpConnector rawClient = new UdpConnector(clientEndpoint, collector);
-		try {
-
-			// Start connector
-			rawClient.start();
-			clientEndpoint = new InetSocketAddress(rawClient.socket.getLocalAddress(), rawClient.socket.getLocalPort());
-			LatchSessionListener sessionListener = new LatchSessionListener();
-
-			// Create handshaker with ReverseRecordLayer to send message in bad
-			// order.
-			ClientHandshaker clientHandshaker = new ClientHandshaker(new DTLSSession(serverEndpoint, true),
-					new ReverseRecordLayer(rawClient), sessionListener, clientConfig, 1280);
-
-			// Start handshake (Send CLIENT HELLO)
-			clientHandshaker.startHandshake();
-
-			// Wait to receive response (should be HELLO VERIFY REQUEST)
-			List<Record> rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs); // check there is no timeout
-			// Handle and answer (CLIENT HELLO with cookie)
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Wait for response (SERVER_HELLO, CERTIFICATE, ... , SERVER_DONE)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			// Handle and answer (FINISHED, CHANGE CIPHER SPEC, ...,CERTIFICATE)
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Wait to receive response (should be CHANGE CIPHER SPEC, FINISHED)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			// Handle it
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Ensure handshake is successfully done
-			assertTrue("handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-		} finally {
-			rawClient.stop();
-		}
-	}
-
-	@Test
-	public void testClientReceivingMessagesInBadOrderDuringHandshake() throws Exception {
-		// Configure UDP connector we will use as Server
-		RecordCollectorDataHandler collector = new RecordCollectorDataHandler();
-		UdpConnector rawServer = new UdpConnector(new InetSocketAddress(0), collector);
-
-		try {
-			// Start connector (Server)
-			rawServer.start();
-			InetSocketAddress rawServerEndpoint = new InetSocketAddress("localhost", rawServer.socket.getLocalPort());
-			LatchSessionListener sessionListener = new LatchSessionListener();
-
-			// Start the client
-			CountDownLatch latch = new CountDownLatch(1);
-			clientRawDataChannel.setLatch(latch);
-			client.setRawDataReceiver(clientRawDataChannel);
-			client.start();
-			clientEndpoint = client.getAddress();
-			RawData data = RawData.outbound("Hello World".getBytes(), new AddressEndpointContext(rawServerEndpoint), null, false);
-			client.send(data);
-
-			// Create server handshaker
-			ServerHandshaker serverHandshaker = new ServerHandshaker(new DTLSSession(clientEndpoint, false, 1),
-					new ReverseRecordLayer(rawServer), sessionListener, serverConfig, 1280);
-
-			// Wait to receive response (should be CLIENT HELLO, flight 3)
-			List<Record> rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs); // check there is no timeout
-			// Handle and answer (should be CERTIFICATE, ... SERVER HELLO DONE, flight 4)
-			for (Record r : rs) {
-				serverHandshaker.processMessage(r);
-			}
-
-			// Wait for receive response (CERTIFICATE, ... , FINISHED, flight 5)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			// Handle and answer (should be CCS, FINISHED, flight 6)
-			for (Record r : rs) {
-				serverHandshaker.processMessage(r);
-			}
-
-			// Ensure handshake is successfully done
-			assertTrue("handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-		} finally {
-			rawServer.stop();
-		}
-	}
-
-	@Test
-	public void testServerResumeReceivingMessagesInBadOrderDuringHandshake() throws Exception {
-		// Configure and create UDP connector
-		RecordCollectorDataHandler collector = new RecordCollectorDataHandler();
-		UdpConnector rawClient = new UdpConnector(clientEndpoint, collector);
-		ReverseRecordLayer clientRecordLayer = new ReverseRecordLayer(rawClient);
-		DTLSSession clientSession = new DTLSSession(serverEndpoint, true);
-		try {
-
-			// Start connector
-			rawClient.start();
-			clientEndpoint = new InetSocketAddress(rawClient.socket.getLocalAddress(), rawClient.socket.getLocalPort());
-			LatchSessionListener sessionListener = new LatchSessionListener();
-
-			// Create handshaker
-			ClientHandshaker clientHandshaker = new ClientHandshaker(clientSession, clientRecordLayer, sessionListener,
-					clientConfig, 1280);
-
-			// Start 1. handshake (Send CLIENT HELLO)
-			clientHandshaker.startHandshake();
-
-			// Wait to receive response (should be HELLO VERIFY REQUEST)
-			List<Record> rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs); // check there is no timeout
-			// Handle and answer (CLIENT HELLO with cookie)
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Wait for response (SERVER_HELLO, CERTIFICATE, ... , SERVER_DONE)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			// Handle and answer (CERTIFICATE, CHANGE CIPHER SPEC, ...,
-			// FINISHED)
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Wait to receive response from server (should be CHANGE CIPHER
-			// SPEC, FINISHED)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			// Handle (CHANGE CIPHER SPEC, FINISHED)
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Ensure handshake is successfully done
-			assertTrue("handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-			// Create resume handshaker
-			sessionListener = new LatchSessionListener();
-			DTLSSession resumableSession = new DTLSSession(clientSession.getSessionIdentifier(), serverEndpoint,
-					clientSession.getSessionTicket(), 0);
-			ResumingClientHandshaker resumingClientHandshaker = new ResumingClientHandshaker(resumableSession,
-					clientRecordLayer, sessionListener, clientConfig, 1280);
-
-
-			// Start resuming handshake (Send CLIENT HELLO, additional flight)
-			resumingClientHandshaker.startHandshake();
-
-			// Wait to receive response (should be SERVER_HELLO, CHANGE CIPHER SPEC, FINISHED, flight 2)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs); // check there is no timeout
-			assertEquals(3, rs.size());
-
-			// create server session listener to ensure, that server finish also the handshake
-			Connection con = serverConnectionStore.get(clientEndpoint);
-			assertNotNull(con);
-			Handshaker handshaker = con.getOngoingHandshake();
-			assertNotNull(handshaker);
-			LatchSessionListener serverSessionListener = new LatchSessionListener();
-			handshaker.addSessionListener(serverSessionListener);
-
-			// Handle and answer ( CHANGE CIPHER SPEC, FINISHED, flight 3)
-			for (Record r : rs) {
-				resumingClientHandshaker.processMessage(r);
-			}
-
-			// Ensure handshake is successfully done
-			assertTrue("client handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-			assertTrue("server handshake failed",
-					serverSessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-		} finally {
-			rawClient.stop();
-		}
-	}
-
-	@Test
-	public void testClientResumeReceivingMessagesInBadOrderDuringHandshake() throws Exception {
-		// Configure UDP connector we will use as Server
-		RecordCollectorDataHandler collector = new RecordCollectorDataHandler();
-		UdpConnector rawServer = new UdpConnector(new InetSocketAddress(0), collector);
-		ReverseRecordLayer serverRecordLayer = new ReverseRecordLayer(rawServer);
-
-		try {
-			// Start connector (Server)
-			rawServer.start();
-
-			InetSocketAddress rawServerEndpoint = new InetSocketAddress("localhost", rawServer.socket.getLocalPort());
-			LatchSessionListener sessionListener = new LatchSessionListener();
-
-			// Start the client
-			client.setRawDataReceiver(clientRawDataChannel);
-			client.start();
-			clientEndpoint = client.getAddress();
-			RawData data = RawData.outbound("Hello World".getBytes(), new AddressEndpointContext(rawServerEndpoint), null, false);
-			client.send(data);
-
-			// Create server handshaker
-			DTLSSession serverSession = new DTLSSession(clientEndpoint, false, 1);
-			ServerHandshaker serverHandshaker = new ServerHandshaker(serverSession, serverRecordLayer, sessionListener,
-					serverConfig, 1280);
-
-			// 1. handshake
-			// Wait to receive response (should be CLIENT HELLO)
-			List<Record> rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs); // check there is no timeout
-			// Handle and answer (should be CERTIFICATE, ... SERVER HELLO DONE)
-			for (Record r : rs) {
-				serverHandshaker.processMessage(r);
-			}
-
-			// Wait to receive response (CERTIFICATE, ... , FINISHED)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			for (Record r : rs) {
-				serverHandshaker.processMessage(r);
-			}
-
-			// Ensure handshake is successfully done
-			assertTrue("handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-			// application data
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			assertEquals(1, rs.size());
-
-			sessionListener = new LatchSessionListener();
-			DTLSSession resumableSession = new DTLSSession(serverSession.getSessionIdentifier(), clientEndpoint,
-					serverSession.getSessionTicket(), 0);
-			ResumingServerHandshaker resumingServerHandshaker = new ResumingServerHandshaker(0, resumableSession,
-					serverRecordLayer, sessionListener, serverConfig, 1280);
-
-			// force resuming handshake
-			client.forceResumeSessionFor(rawServerEndpoint);
-			data = RawData.outbound("Hello Again".getBytes(), new AddressEndpointContext(rawServerEndpoint), null, false);
-			client.send(data);
-
-			// Wait to receive response (should be CLIENT HELLO, flight 1)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			assertEquals(1, rs.size());
-			// Handle and answer (should be SERVER HELLO, CCS, FINISHED, flight 2).
-			// Note: additional flight used by scandium
-			for (Record r : rs) {
-				resumingServerHandshaker.processMessage(r);
-			}
-
-			// Wait to receive response (CCS, client FINISHED, flight 3) + (application data)
-			List<Record> drops = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", drops);
-			assertEquals(3, drops.size());
-			// remove application data, not retransmitted!
-			drops.remove(2); 
-			
-			// drop last flight 3, server resends flight 2
-			serverRecordLayer.resendLastFlight();
-
-			// Wait to receive response (CCS, client FINISHED, flight 3)
-			// ("application data" doesn't belong to flight)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			assertEquals(2, rs.size());
-			assertFlightRecordsRetransmitted(drops, rs);
-			for (Record r : rs) {
-				resumingServerHandshaker.processMessage(r);
-			}
-			assertTrue("handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-		} finally {
-			rawServer.stop();
-		}
-	}
-	
-	
-	/**
-	 * Test retransmission of last flight.
-	 * 
-	 * RFC6347, section 4.2.4, fig. 2
-	 * 
-	 * "testFinishedMessageRetransmission" drops the first transmission of
-	 * flight 5 to test, if flight 5 is retransmitted. But flight 5 is just
-	 * usual retransmission, the special case is flight 6. Therefore this test
-	 * drops the 1. transmission of flight 6 to check, if retransmission of
-	 * flight 5 triggers the retransmission of flight 6.
-	 */
-	@Test
-	public void testServerFinishedMessageRetransmission() throws Exception {
-		// Configure and create UDP connector
-		RecordCollectorDataHandler collector = new RecordCollectorDataHandler();
-		UdpConnector rawClient = new UdpConnector(clientEndpoint, collector);
-		SimpleRecordLayer clientRecordLayer = new SimpleRecordLayer(rawClient);
-		try {
-
-			// Start connector
-			rawClient.start();
-			clientEndpoint = new InetSocketAddress(rawClient.socket.getLocalAddress(), rawClient.socket.getLocalPort());
-			LatchSessionListener sessionListener = new LatchSessionListener();
-
-			// Create handshaker
-			ClientHandshaker clientHandshaker = new ClientHandshaker(new DTLSSession(serverEndpoint, true),
-					clientRecordLayer, sessionListener, clientConfig, 1280);
-
-			// Start handshake (Send CLIENT HELLO, flight 1)
-			clientHandshaker.startHandshake();
-
-			// Wait to receive response (should be HELLO VERIFY REQUEST, flight 2)
-			List<Record> rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs); // check there is no timeout
-			// Handle and answer (CLIENT HELLO with cookie, flight 3)
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Wait for response (SERVER_HELLO, CERTIFICATE, ... , SERVER_DONE, flight 4)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			// Handle and answer (CERTIFICATE, CHANGE CIPHER SPEC, ..., FINISHED, flight 5)
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Wait to receive response from server (should be CHANGE CIPHER SPEC, FINISHED, flight 6)
-			List<Record> drops = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", drops);
-			// Ignore the receive response, client resends flight 5
-			clientRecordLayer.resendLastFlight();
-
-			// Wait for retransmission (should be CHANGE CIPHER SPEC, FINISHED, flight 6)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			assertFlightRecordsRetransmitted(drops, rs);
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Ensure handshake is successfully done
-			assertTrue("handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-		} finally {
-			rawClient.stop();
-		}
-	}
-
-	/**
-	 * Test retransmission of last flight of resuming handshake.
-	 * 
-	 * RFC6347, section 4.2.4, fig. 2
-	 * 
-	 * "testResumeFinishedMessageRetransmission" drops the first transmission of
-	 * flight 2 to test, if flight 2 is retransmitted. But flight 2 is just
-	 * usual retransmission, the special case is flight 3. Therefore this test
-	 * drops the 1. transmission of flight 3 to check, if retransmission of
-	 * flight 2 triggers the retransmission of flight 3.
-	 */
-	@Test
-	public void testResumeClientFinishedMessageRetransmission() throws Exception {
-		// Configure UDP connector we will use as Server
-		RecordCollectorDataHandler collector = new RecordCollectorDataHandler();
-		UdpConnector rawServer = new UdpConnector(new InetSocketAddress(0), collector);
-		SimpleRecordLayer serverRecordLayer = new SimpleRecordLayer(rawServer);
-
-		try {
-			// Start connector (Server)
-			rawServer.start();
-
-			InetSocketAddress rawServerEndpoint = new InetSocketAddress("localhost", rawServer.socket.getLocalPort());
-			LatchSessionListener sessionListener = new LatchSessionListener();
-
-			// Start the client
-			client.setRawDataReceiver(clientRawDataChannel);
-			client.start();
-			clientEndpoint = client.getAddress();
-			RawData data = RawData.outbound("Hello World".getBytes(), new AddressEndpointContext(rawServerEndpoint), null, false);
-			client.send(data);
-
-			// Create server handshaker
-			DTLSSession serverSession = new DTLSSession(clientEndpoint, false, 1);
-			ServerHandshaker serverHandshaker = new ServerHandshaker(serverSession, serverRecordLayer, sessionListener,
-					serverConfig, 1280);
-
-			// 1. handshake
-			// Wait to receive response (should be CLIENT HELLO)
-			List<Record> rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs); // check there is no timeout
-			// Handle and answer (should be CERTIFICATE, ... SERVER HELLO DONE)
-			for (Record r : rs) {
-				serverHandshaker.processMessage(r);
-			}
-
-			// Wait to receive response (CERTIFICATE, ... , FINISHED)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			for (Record r : rs) {
-				serverHandshaker.processMessage(r);
-			}
-
-			// Ensure handshake is successfully done
-			assertTrue("handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-			// application data
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			assertEquals(1, rs.size());
-
-			sessionListener = new LatchSessionListener();
-			DTLSSession resumableSession = new DTLSSession(serverSession.getSessionIdentifier(), clientEndpoint,
-					serverSession.getSessionTicket(), 0);
-			ResumingServerHandshaker resumingServerHandshaker = new ResumingServerHandshaker(0, resumableSession,
-					serverRecordLayer, sessionListener, serverConfig, 1280);
-
-			// force resuming handshake
-			client.forceResumeSessionFor(rawServerEndpoint);
-			data = RawData.outbound("Hello Again".getBytes(), new AddressEndpointContext(rawServerEndpoint), null, false);
-			client.send(data);
-
-			// Wait to receive response (should be CLIENT HELLO, flight 1)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			assertEquals(1, rs.size());
-			// Handle and answer (should be SERVER HELLO, CCS, FINISHED, VERIFY REQUEST, flight 2).
-			// Note: additional flight used by scandium
-			for (Record r : rs) {
-				resumingServerHandshaker.processMessage(r);
-			}
-
-			// Wait to receive response (CCS, client FINISHED, flight 3) + (application data)
-			List<Record> drops = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", drops);
-			assertEquals(3, drops.size());
-			// remove application data, not retransmitted!
-			drops.remove(2); 
-			
-			// drop last flight 3, server resends flight 2
-			serverRecordLayer.resendLastFlight();
-
-			// Wait to receive response (CCS, client FINISHED, flight 3)
-			// ("application data" doesn't belong to flight)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			assertEquals(2, rs.size());
-			assertFlightRecordsRetransmitted(drops, rs);
-			for (Record r : rs) {
-				resumingServerHandshaker.processMessage(r);
-			}
-			assertTrue("handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-		} finally {
-			rawServer.stop();
-		}
-	}
-
-	/**
-	 * Test retransmission of flight before last flight.
-	 * 
-	 * RFC6347, section 4.2.4, fig. 2
-	 * 
-	 * Drops the first transmission of flight 5 to test, if flight 5 is retransmitted.
-	 * Usual retransmission, the special case is flight 6, see "testServerFinishedMessageRetransmission". 
-	 */
-	@Test
-	public void testFinishedMessageRetransmission() throws Exception {
-		// Configure UDP connector we will use as Server
-		RecordCollectorDataHandler collector = new RecordCollectorDataHandler();
-		UdpConnector rawServer = new UdpConnector(new InetSocketAddress(0), collector);
-
-		try {
-			// Start connector (Server)
-			rawServer.start();
-			InetSocketAddress rawServerEndpoint = new InetSocketAddress("localhost", rawServer.socket.getLocalPort());
-			LatchSessionListener sessionListener = new LatchSessionListener();
-
-			// Start the client
-			CountDownLatch latch = new CountDownLatch(1);
-			clientRawDataChannel.setLatch(latch);
-			client.setRawDataReceiver(clientRawDataChannel);
-			client.start();
-			clientEndpoint = client.getAddress();
-			RawData data = RawData.outbound("Hello World".getBytes(), new AddressEndpointContext(rawServerEndpoint), null, false);
-			client.send(data);
-
-			// Create server handshaker
-			ServerHandshaker serverHandshaker = new ServerHandshaker(new DTLSSession(clientEndpoint, false, 1),
-					new SimpleRecordLayer(rawServer), sessionListener, serverConfig, 1280);
-
-			// Wait to receive response (should be CLIENT HELLO, flight 3)
-			List<Record> rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs); // check there is no timeout
-			// Handle and answer (should be CERTIFICATE, ... SERVER HELLO DONE, flight 4)
-			for (Record r : rs) {
-				serverHandshaker.processMessage(r);
-			}
-
-			// Ignore transmission (CERTIFICATE, ... , FINISHED, flight 5)
-			List<Record> drops = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", drops);
-
-			// Wait for retransmission (CERTIFICATE, ... , FINISHED, flight 5)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			assertFlightRecordsRetransmitted(drops, rs);
-			// Handle and answer (should be CCS, FINISHED, flight 6)
-			for (Record r : rs) {
-				serverHandshaker.processMessage(r);
-			}
-
-			// Ensure handshake is successfully done
-			assertTrue("handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-		} finally {
-			rawServer.stop();
-		}
-	}
-
-	/**
-	 * Test retransmission of flight before last flight of resuming handshake.
-	 * 
-	 * RFC6347, section 4.2.4, fig. 2
-	 * 
-	 * Drops the first transmission of flight 2 to test, if flight 2 is
-	 * retransmitted. Flight 2 is just usual retransmission, the special case is
-	 * flight 3, see "testResumeClientFinishedMessageRetransmission". Note:
-	 * scandium uses a additional HELLO VERIFY REQUEST. May be optimized in the
-	 * future.
-	 */
-	@Test
-	public void testResumeFinishedMessageRetransmission() throws Exception {
-		// Configure and create UDP connector
-		RecordCollectorDataHandler collector = new RecordCollectorDataHandler();
-		UdpConnector rawClient = new UdpConnector(clientEndpoint, collector);
-		SimpleRecordLayer clientRecordLayer = new SimpleRecordLayer(rawClient);
-		DTLSSession clientSession = new DTLSSession(serverEndpoint, true);
-		try {
-
-			// Start connector
-			rawClient.start();
-			clientEndpoint = new InetSocketAddress(rawClient.socket.getLocalAddress(), rawClient.socket.getLocalPort());
-			LatchSessionListener sessionListener = new LatchSessionListener();
-
-			// Create handshaker
-			ClientHandshaker clientHandshaker = new ClientHandshaker(clientSession, clientRecordLayer, sessionListener,
-					clientConfig, 1280);
-
-			// Start 1. handshake (Send CLIENT HELLO)
-			clientHandshaker.startHandshake();
-
-			// Wait to receive response (should be HELLO VERIFY REQUEST)
-			List<Record> rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs); // check there is no timeout
-			// Handle and answer (CLIENT HELLO with cookie)
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Wait for response (SERVER_HELLO, CERTIFICATE, ... , SERVER_DONE)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			// Handle and answer (CERTIFICATE, CHANGE CIPHER SPEC, ...,
-			// FINISHED)
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Wait to receive response from server (should be CHANGE CIPHER
-			// SPEC, FINISHED)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs);
-			// Handle (CHANGE CIPHER SPEC, FINISHED)
-			for (Record r : rs) {
-				clientHandshaker.processMessage(r);
-			}
-
-			// Ensure handshake is successfully done
-			assertTrue("handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-			// Create resume handshaker
-			sessionListener = new LatchSessionListener();
-			DTLSSession resumableSession = new DTLSSession(clientSession.getSessionIdentifier(), serverEndpoint,
-					clientSession.getSessionTicket(), 0);
-			ResumingClientHandshaker resumingClientHandshaker = new ResumingClientHandshaker(resumableSession,
-					clientRecordLayer, sessionListener, clientConfig, 1280);
-
-			// Start resuming handshake (Send CLIENT HELLO, additional flight)
-			resumingClientHandshaker.startHandshake();
-
-			// Wait to receive response (should be SERVER_HELLO, CHANGE CIPHER SPEC, FINISHED, fight 2)
-			List<Record> drops = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", drops); // check there is no timeout
-			assertEquals(3, drops.size());
-
-			// create server session listener to ensure, that server finish also the handshake
-			Connection con = serverConnectionStore.get(clientEndpoint);
-			assertNotNull(con);
-			Handshaker handshaker = con.getOngoingHandshake();
-			assertNotNull(handshaker);
-			LatchSessionListener serverSessionListener = new LatchSessionListener();
-			handshaker.addSessionListener(serverSessionListener);
-			
-			// drop it, force retransmission (should be SERVER_HELLO, CHANGE CIPHER SPEC, FINISHED, fight 2)
-			rs = collector.waitForFlight(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
-			assertNotNull("timeout", rs); // check there is no timeout
-			assertEquals(3, rs.size());
-			assertFlightRecordsRetransmitted(drops, rs);
-			// Handle and answer ( CHANGE CIPHER SPEC, FINISHED, flight 3)
-			for (Record r : rs) {
-				resumingClientHandshaker.processMessage(r);
-			}
-
-			// Ensure handshake is successfully done
-			assertTrue("client handshake failed",
-					sessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-			assertTrue("server handshake failed",
-					serverSessionListener.waitForSessionEstablished(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-		} finally {
-			rawClient.stop();
-		}
-	}
-
 	/**
 	 * Verifies behavior described in <a href="http://tools.ietf.org/html/rfc6347#section-4.2.8">
 	 * section 4.2.8 of RFC 6347 (DTLS 1.2)</a>.
@@ -1357,118 +702,18 @@ public class DTLSConnectorTest {
 				con.getEstablishedSession().getSessionIdentifier(), is(not(originalSessionId)));
 	}
 
-	@Test
-	public void testConnectorResumesSessionFromNewConnection() throws Exception {
-		// Do a first handshake
-		givenAnEstablishedSession();
-		client.stop();
-		byte[] sessionId = establishedServerSession.getSessionIdentifier().getId();
-
-		// Force a resume session the next time we send data
-		client.forceResumeSessionFor(serverEndpoint);
-		Connection connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
-
-		// create a new client with different inetAddress but with the same session store.
-		clientEndpoint = new InetSocketAddress(InetAddress.getLoopbackAddress(), 10001);
-		clientConfig = DTLSConnectorTest.newStandardConfig(clientEndpoint);
-		client = new DTLSConnector(clientConfig, clientConnectionStore);
-		clientRawDataChannel = new LatchDecrementingRawDataChannel();
-		client.setRawDataReceiver(clientRawDataChannel);
-		client.start();
-
-		// Prepare message sending
-		final String msg = "Hello Again";
-		CountDownLatch latch = new CountDownLatch(1);
-		clientRawDataChannel.setLatch(latch);
-
-		// send message
-		RawData data = RawData.outbound(msg.getBytes(), new AddressEndpointContext(serverEndpoint), null, false);
-		client.send(data);
-		assertTrue(latch.await(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-		// check we use the same session id
-		connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
-		assertClientIdentity(RawPublicKeyIdentity.class);
-	}
-
-	@Test
-	public void testConnectorAutoResumesSession() throws Exception {
-
-		autoResumeSetUp(1000);
-
-		// Do a first handshake
-		givenAnEstablishedSession(false);
-
-		Connection connection = clientConnectionStore.get(serverEndpoint);
-		byte[] sessionId = connection.getSession().getSessionIdentifier().getId();
-		assertThat(serverSessionCache.establishedSessionCounter.get(), is(1));
-		assertThat(connection.isAutoResumptionRequired(), is(false));
-
-		Thread.sleep(2000);
-
-		assertThat(connection.isAutoResumptionRequired(), is(true));
-		
-		// Prepare message sending
-		final String msg = "Hello Again";
-		CountDownLatch latch = new CountDownLatch(1);
-		clientRawDataChannel.setLatch(latch);
-
-		// send message
-		RawData data = RawData.outbound(msg.getBytes(), new AddressEndpointContext(serverEndpoint), null, false);
-		client.send(data);
-		assertTrue(latch.await(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-		// check we use the same session id
-		connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
-		assertClientIdentity(RawPublicKeyIdentity.class);
-
-		// check, if session is established again
-		assertThat(serverSessionCache.establishedSessionCounter.get(), is(2));
-	}
-
-	@Test
-	public void testConnectorNoAutoResumesSession() throws Exception {
-
-		autoResumeSetUp(2000);
-
-		// Do a first handshake
-		givenAnEstablishedSession(false);
-
-		Connection connection = clientConnectionStore.get(serverEndpoint);
-		assertThat(serverSessionCache.establishedSessionCounter.get(), is(1));
-		assertThat(connection.isAutoResumptionRequired(), is(false));
-		Thread.sleep(1500);
-		// Prepare message sending
-		final String msg = "Hello Again";
-		CountDownLatch latch = new CountDownLatch(1);
-		clientRawDataChannel.setLatch(latch);
-
-		// send message
-		RawData data = RawData.outbound(msg.getBytes(), new AddressEndpointContext(serverEndpoint), null, false);
-		client.send(data);
-		assertTrue(latch.await(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-		Thread.sleep(1500);
-
-		assertThat(connection.isAutoResumptionRequired(), is(false));
-		// check, if session is established again
-		assertThat(serverSessionCache.establishedSessionCounter.get(), is(1));
-	}
 
 	@Test
 	public void testStartStopWithNewAddress() throws Exception {
 		// Do a first handshake
 		givenAnEstablishedSession(false);
-		byte[] sessionId = establishedServerSession.getSessionIdentifier().getId();
+		byte[] sessionId = establishedServerSession.getSessionIdentifier().getBytes();
 		InetSocketAddress firstAddress = client.getAddress();
 
 		// Stop the client
 		client.stop();
 		Connection connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
+		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getBytes());
 
 		// Restart it
 		client.start();
@@ -1486,7 +731,7 @@ public class DTLSConnectorTest {
 
 		// check we use the same session id
 		connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
+		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getBytes());
 		assertClientIdentity(RawPublicKeyIdentity.class);
 	}
 
@@ -1494,13 +739,13 @@ public class DTLSConnectorTest {
 	public void testStartStopWithSameAddress() throws Exception {
 		// Do a first handshake
 		givenAnEstablishedSession(false);
-		byte[] sessionId = establishedServerSession.getSessionIdentifier().getId();
+		byte[] sessionId = establishedServerSession.getSessionIdentifier().getBytes();
 		InetSocketAddress firstAddress = client.getAddress();
 
 		// Stop the client
 		client.stop();
 		Connection connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
+		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getBytes());
 
 		// Restart it
 		client.restart();
@@ -1518,7 +763,7 @@ public class DTLSConnectorTest {
 
 		// check we use the same session id
 		connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
+		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getBytes());
 		assertClientIdentity(RawPublicKeyIdentity.class);
 	}
 
@@ -1528,13 +773,13 @@ public class DTLSConnectorTest {
 		client.setExecutor(null);
 		// Do a first handshake
 		givenAnEstablishedSession(false);
-		byte[] sessionId = establishedServerSession.getSessionIdentifier().getId();
+		byte[] sessionId = establishedServerSession.getSessionIdentifier().getBytes();
 		InetSocketAddress firstAddress = client.getAddress();
 
 		// Stop the client
 		client.stop();
 		Connection connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
+		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getBytes());
 
 		// Restart it
 		client.restart();
@@ -1552,100 +797,7 @@ public class DTLSConnectorTest {
 
 		// check we use the same session id
 		connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
-		assertClientIdentity(RawPublicKeyIdentity.class);
-	}
-
-	@Test
-	public void testConnectorResumesSessionFromSharedSessionTicket() throws Exception {
-		// Do a first handshake
-		givenAnEstablishedSession();
-		SessionId establishedSessionId = establishedServerSession.getSessionIdentifier();
-
-		// Force a resume session the next time we send data
-		client.forceResumeSessionFor(serverEndpoint);
-		Connection connection = clientConnectionStore.get(serverEndpoint);
-		assertThat(connection.getEstablishedSession().getSessionIdentifier(), is(establishedSessionId));
-		client.start();
-
-		// remove connection from server's connection store and add ticket to session cache
-		// to mimic a fail over from another node
-		serverConnectionStore.remove(clientEndpoint);
-		assertThat(serverSessionCache.get(establishedSessionId), is(nullValue()));
-		serverSessionCache.put(establishedSessionId, establishedServerSession.getSessionTicket());
-
-		// Prepare message sending
-		final String msg = "Hello Again";
-		CountDownLatch latch = new CountDownLatch(1);
-		clientRawDataChannel.setLatch(latch);
-
-		// send message
-		RawData data = RawData.outbound(msg.getBytes(), new AddressEndpointContext(serverEndpoint), null, false);
-		client.send(data);
-		assertTrue(latch.await(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-		// check we use the same session id
-		connection = clientConnectionStore.get(serverEndpoint);
-		assertThat(connection.getEstablishedSession().getSessionIdentifier(), is(establishedSessionId));
-		assertClientIdentity(RawPublicKeyIdentity.class);
-	}
-
-	@Test
-	public void testConnectorResumesSessionFromExistingConnection() throws Exception {
-		// Do a first handshake
-		givenAnEstablishedSession();
-		byte[] sessionId = establishedServerSession.getSessionIdentifier().getId();
-
-		// Force a resume session the next time we send data
-		client.forceResumeSessionFor(serverEndpoint);
-		Connection connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
-		client.start();
-
-		// Prepare message sending
-		final String msg = "Hello Again";
-		CountDownLatch latch = new CountDownLatch(1);
-		clientRawDataChannel.setLatch(latch);
-
-		// send message
-		RawData data = RawData.outbound(msg.getBytes(), new AddressEndpointContext(serverEndpoint), null, false);
-		client.send(data);
-		assertTrue(latch.await(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-		// check we use the same session id
-		connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
-		assertClientIdentity(RawPublicKeyIdentity.class);
-	}
-
-	@Test
-	public void testConnectorPerformsFullHandshakeWhenResumingNonExistingSession() throws Exception {
-		// Do a first handshake
-		givenAnEstablishedSession();
-		byte[] sessionId = establishedServerSession.getSessionIdentifier().getId();
-
-		// Force a resume session the next time we send data
-		client.forceResumeSessionFor(serverEndpoint);
-		Connection connection = clientConnectionStore.get(serverEndpoint);
-		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getId());
-		client.start();
-
-		// Prepare message sending
-		final String msg = "Hello Again";
-		CountDownLatch latch = new CountDownLatch(1);
-		clientRawDataChannel.setLatch(latch);
-
-		// remove session from server
-		serverConnectionStore.remove(clientEndpoint);
-
-		// send message
-		RawData data = RawData.outbound(msg.getBytes(), new AddressEndpointContext(serverEndpoint), null, false);
-		client.send(data);
-		assertTrue(latch.await(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
-
-		// check session id was not equals
-		connection = clientConnectionStore.get(serverEndpoint);
-		Assert.assertThat(sessionId, not(equalTo(connection.getEstablishedSession().getSessionIdentifier().getId())));
+		assertArrayEquals(sessionId, connection.getEstablishedSession().getSessionIdentifier().getBytes());
 		assertClientIdentity(RawPublicKeyIdentity.class);
 	}
 
@@ -1660,7 +812,7 @@ public class DTLSConnectorTest {
 
 			@Override
 			public void handleData(byte[] data) {
-				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint)); 
+				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint, null)); 
 				latch.countDown();
 			}
 		};
@@ -1706,8 +858,8 @@ public class DTLSConnectorTest {
 	public void testConnectorTerminatesHandshakeIfConnectionStoreIsExhausted() throws Exception {
 		serverConnectionStore.clear();
 		assertTrue(serverConnectionStore.remainingCapacity() == SERVER_CONNECTION_STORE_CAPACITY);
-		assertTrue(serverConnectionStore.put(new Connection(new InetSocketAddress("192.168.0.1", 5050), null)));
-		assertTrue(serverConnectionStore.put(new Connection(new InetSocketAddress("192.168.0.2", 5050), null)));
+		assertTrue(serverConnectionStore.put(new Connection(new InetSocketAddress("192.168.0.1", 5050), new SerialExecutor(ExecutorsUtil.getScheduledExecutor()))));
+		assertTrue(serverConnectionStore.put(new Connection(new InetSocketAddress("192.168.0.2", 5050), new SerialExecutor(ExecutorsUtil.getScheduledExecutor()))));
 
 		CountDownLatch latch = new CountDownLatch(1);
 		clientRawDataChannel.setLatch(latch);
@@ -1740,6 +892,7 @@ public class DTLSConnectorTest {
 	private void ensureConnectorIgnoresBadCredentials(PskStore pskStoreWithBadCredentials) throws Exception {
 		final CountDownLatch latch = new CountDownLatch(1);
 		clientConfig = new DtlsConnectorConfig.Builder()
+			.setLoggingTag("client")
 			.setAddress(clientEndpoint)
 			.setPskStore(pskStoreWithBadCredentials)
 			.build();
@@ -1778,32 +931,6 @@ public class DTLSConnectorTest {
 		assertFalse(latch.await(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS));
 		assertThat(alert.get(), is(nullValue()));
 	}
-	
-	@Test
-	public void testConnectorEstablishSessionWithEcdhPskCBCSuite() throws Exception {
-		clientConfig = new DtlsConnectorConfig.Builder()
-				.setAddress(clientEndpoint)
-				.setPskStore(new StaticPskStore(CLIENT_IDENTITY, CLIENT_IDENTITY_SECRET.getBytes()))
-				.setSupportedCipherSuites(new CipherSuite[] {CipherSuite.TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256})
-				.build();
-			client = new DTLSConnector(clientConfig, clientConnectionStore);
-			givenAnEstablishedSession();
-	}
-	
-	/**
-	 * Verifies that the connector can successfully establish a session using a CBC based cipher suite.
-	 */
-	@Test
-	public void testConnectorEstablishesSecureSessionUsingCbcBlockCipher() throws Exception {
-		clientConfig =  new DtlsConnectorConfig.Builder()
-			.setAddress(clientEndpoint)
-			.setSupportedCipherSuites(new CipherSuite[]{CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256})
-			.setIdentity(DtlsTestTools.getClientPrivateKey(), DtlsTestTools.getClientCertificateChain(), false)
-			.setTrustStore(DtlsTestTools.getTrustedCertificates())
-			.build();
-		client = new DTLSConnector(clientConfig, clientConnectionStore);
-		givenAnEstablishedSession();
-	}
 
 	/**
 	 * Verifies that the connector includes a <code>RawPublicKeyIdentity</code> representing
@@ -1829,8 +956,11 @@ public class DTLSConnectorTest {
 		// given an established session with a client using PSK authentication
 		clientConfig = new DtlsConnectorConfig.Builder()
 			.setAddress(clientEndpoint)
+			.setLoggingTag("client")
 			.setPskStore(new StaticPskStore(CLIENT_IDENTITY, CLIENT_IDENTITY_SECRET.getBytes()))
 			.build();
+		clientConnectionStore = new InMemoryConnectionStore(CLIENT_CONNECTION_STORE_CAPACITY, 60);
+		clientConnectionStore.setTag("client");
 		client = new DTLSConnector(clientConfig, clientConnectionStore);
 		givenAnEstablishedSession();
 
@@ -1848,9 +978,12 @@ public class DTLSConnectorTest {
 		// given an established session with a client using X.509 based authentication
 		clientConfig = new DtlsConnectorConfig.Builder()
 			.setAddress(clientEndpoint)
-			.setIdentity(DtlsTestTools.getClientPrivateKey(), DtlsTestTools.getClientCertificateChain(), false)
+			.setLoggingTag("client")
+			.setIdentity(DtlsTestTools.getClientPrivateKey(), DtlsTestTools.getClientCertificateChain(), CertificateType.X_509)
 			.setTrustStore(DtlsTestTools.getTrustedCertificates())
 			.build();
+		clientConnectionStore = new InMemoryConnectionStore(CLIENT_CONNECTION_STORE_CAPACITY, 60);
+		clientConnectionStore.setTag("client");
 		client = new DTLSConnector(clientConfig, clientConnectionStore);
 		givenAnEstablishedSession();
 
@@ -1871,7 +1004,8 @@ public class DTLSConnectorTest {
 		// clients to authenticate
 		serverConfig = new DtlsConnectorConfig.Builder()
 				.setAddress(clientEndpoint)
-				.setIdentity(DtlsTestTools.getPrivateKey(), DtlsTestTools.getServerCertificateChain(), true)
+				.setLoggingTag("server")
+				.setIdentity(DtlsTestTools.getPrivateKey(), DtlsTestTools.getServerCertificateChain(), CertificateType.RAW_PUBLIC_KEY)
 				.setClientAuthenticationRequired(false)
 				.build();
 		server = new DTLSConnector(serverConfig, serverConnectionStore);
@@ -1880,27 +1014,13 @@ public class DTLSConnectorTest {
 		assertClientIdentity(null);
 	}
 
-	@SuppressWarnings("rawtypes")
-	private void assertClientIdentity(final Class principalType) {
+	private void assertClientIdentity(final Class<?> principalType) {
 
 		// assert that client identity is of given type
 		if (principalType == null) {
 			assertThat(serverRawDataProcessor.getClientIdentity(), is(nullValue()));
 		} else {
 			assertThat(serverRawDataProcessor.getClientIdentity(), instanceOf(principalType));
-		}
-	}
-
-	private void assertFlightRecordsRetransmitted(final List<Record> flight1, final List<Record> flight2) {
-
-		// assert that flights contains the same number of records.
-		assertThat("retransmitted flight has different number of records", flight2.size(), is(flight1.size()));
-		for (int index=0; index < flight1.size(); ++index) {
-			Record record1 = flight1.get(index);
-			Record record2 = flight2.get(index);
-			assertThat("retransmitted flight record has different epoch", record2.getEpoch(), is(record1.getEpoch()));
-			assertThat("retransmitted flight record has different type", record2.getType(), is(record1.getType()));
-			assertThat("retransmitted flight record has no newer seqn", record2.getSequenceNumber(), is(greaterThan(record1.getSequenceNumber())));
 		}
 	}
 
@@ -1954,7 +1074,7 @@ public class DTLSConnectorTest {
 		// send a CLIENT_HELLO message to the server to renegotiation connection
 		client.sendRecord(new Record(ContentType.HANDSHAKE, establishedClientSession.getWriteEpoch(),
 				establishedClientSession.getSequenceNumber(), createClientHello(),
-				establishedClientSession));
+				establishedClientSession, false, 0));
 
 		// ensure server answer with a NO_RENOGIATION alert
 		AlertMessage alert = alertCatcher.waitForFirstAlert(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
@@ -1974,7 +1094,7 @@ public class DTLSConnectorTest {
 		// send a HELLO_REQUEST message to the client
 		server.sendRecord(new Record(ContentType.HANDSHAKE, establishedServerSession.getWriteEpoch(),
 				establishedServerSession.getSequenceNumber(), new HelloRequest(clientEndpoint),
-				establishedServerSession));
+				establishedServerSession, false, 0));
 
 		// ensure client answer with a NO_RENOGIATION alert
 		AlertMessage alert = alertCatcher.waitForFirstAlert(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
@@ -2028,7 +1148,7 @@ public class DTLSConnectorTest {
 			List<CipherSuite> ciperSuites = new ArrayList<>();
 			ciperSuites.add(CipherSuite.TLS_PSK_WITH_AES_128_CCM_8);
 			ciperSuites.add(CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8);
-			hello = new ClientHello(new ProtocolVersion(), new SecureRandom(), ciperSuites, Collections.<CertificateType> emptyList(), Collections.<CertificateType> emptyList(),clientEndpoint);
+			hello = new ClientHello(new ProtocolVersion(), new SecureRandom(), ciperSuites, null, null, clientEndpoint);
 		} else {
 			hello = new ClientHello(new ProtocolVersion(), new SecureRandom(),sessionToResume, null, null);
 		}
@@ -2069,7 +1189,7 @@ public class DTLSConnectorTest {
 		}
 	}
 
-	private abstract class LatchDecrementingDataHandler implements DataHandler {
+	private static abstract class LatchDecrementingDataHandler implements DataHandler {
 		private CountDownLatch latch;
 
 		public LatchDecrementingDataHandler(CountDownLatch latch){
@@ -2089,47 +1209,20 @@ public class DTLSConnectorTest {
 		}
 	};
 
-	private class RecordCollectorDataHandler implements DataHandler {
+	private static class RecordCollectorDataHandler implements DataHandler {
 
 		private BlockingQueue<List<Record>> records = new LinkedBlockingQueue<>();
 
 		@Override
 		public void handleData(byte[] data) {
 			try {
-				records.put(Record.fromByteArray(data, serverEndpoint));
+				records.put(Record.fromByteArray(data, serverEndpoint, null));
 			} catch (InterruptedException e) {
 			}
 		}
 
 		public List<Record> waitForRecords(long timeout, TimeUnit unit) throws InterruptedException {
 			return records.poll(timeout, unit);
-		}
-
-		public List<Record> waitForFlight(long timeout, TimeUnit unit) throws InterruptedException {
-			List<Record> received = waitForRecords(timeout, unit);
-			if (null != received) {
-				received = new ArrayList<Record>(received);
-				List<Record> next;
-				if (null != (next = waitForRecords(200, TimeUnit.MILLISECONDS))) {
-					received.addAll(next);
-				}
-			}
-			return received;
-		}
-	};
-
-	private class LatchSessionListener extends SessionAdapter {
-
-		private CountDownLatch latch = new CountDownLatch(1);
-
-		@Override
-		public void sessionEstablished(Handshaker handshaker, DTLSSession establishedSession)
-				throws HandshakeException {
-			latch.countDown();
-		}
-
-		public boolean waitForSessionEstablished(long timeout, TimeUnit unit) throws InterruptedException {
-			return latch.await(timeout, unit);
 		}
 	};
 
@@ -2140,7 +1233,7 @@ public class DTLSConnectorTest {
 		LatchDecrementingDataHandler handler = new LatchDecrementingDataHandler(latch) {
 			@Override
 			public boolean handle(byte[] data) {
-				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint));
+				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint, null));
 				return true;
 			}
 		};
@@ -2175,7 +1268,6 @@ public class DTLSConnectorTest {
 			latch = new CountDownLatch(1);
 			handler.setLatch(latch);
 			clientHello.setCookie(cookie);
-			clientHello.setFragmentLength(clientHello.getMessageLength());
 			rawClient.sendRecord(
 					serverEndpoint,
 					DtlsTestTools.newDTLSRecord(ContentType.HANDSHAKE.getCode(), 0, 0, clientHello.toByteArray()));
@@ -2196,7 +1288,7 @@ public class DTLSConnectorTest {
 		}
 	}
 
-	private class LatchDecrementingRawDataChannel extends SimpleRawDataChannel {
+	private static class LatchDecrementingRawDataChannel extends SimpleRawDataChannel {
 		private CountDownLatch latch;
 
 		public LatchDecrementingRawDataChannel() {
@@ -2215,68 +1307,6 @@ public class DTLSConnectorTest {
 			}
 		}
 	}
-
-	public class SimpleRecordLayer implements RecordLayer {
-
-		protected final UdpConnector connector;
-		protected volatile DTLSFlight lastFlight;
-
-		public SimpleRecordLayer(UdpConnector connector) {
-			this.connector = connector;
-		}
-
-		@Override
-		public void sendRecord(Record record) {
-			try {
-				connector.sendRecord(record.getPeerAddress(), record.toByteArray());
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
-		}
-
-		@Override
-		public void sendFlight(DTLSFlight flight) {
-			lastFlight = flight;
-			for (Record r : flight.getMessages()) {
-				sendRecord(r);
-			}
-		}
-
-		public void resendLastFlight() throws GeneralSecurityException {
-			DTLSFlight flight = lastFlight;
-			if (null == flight) {
-				throw new IllegalStateException("no last flight!");
-			}
-			flight.incrementTries();
-			flight.setNewSequenceNumbers();
-			sendFlight(flight);
-		}
-
-		@Override
-		public void cancelRetransmissions() {
-		}
-	};
-
-	public class ReverseRecordLayer extends SimpleRecordLayer {
-
-		public ReverseRecordLayer(UdpConnector connector) {
-			super(connector);
-		}
-
-		@Override
-		public void sendFlight(DTLSFlight flight) {
-			lastFlight = flight;
-			List<Record> messages = flight.getMessages();
-			for (int i = messages.size() - 1; i >= 0; i--) {
-				try {
-					LOGGER.info("Reverse send {}: {}", i, messages.get(i));
-					connector.sendRecord(flight.getPeerAddress(), messages.get(i).toByteArray());
-				} catch (IOException e) {
-					throw new RuntimeException(e);
-				}
-			}
-		}
-	};
 
 	private static class SimpleRawDataChannel implements RawDataChannel {
 
@@ -2338,7 +1368,7 @@ public class DTLSConnectorTest {
 		void handleData(byte[] data);
 	}
 
-	private class UdpConnector {
+	private static class UdpConnector {
 
 		InetSocketAddress address;
 		DatagramSocket socket;
@@ -2394,7 +1424,7 @@ public class DTLSConnectorTest {
 		}
 	}
 
-	private class SingleAlertCatcher implements AlertHandler {
+	private static class SingleAlertCatcher implements AlertHandler {
 
 		private CountDownLatch latch = new CountDownLatch(1);
 		private AlertMessage alert;

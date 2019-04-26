@@ -31,6 +31,8 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.eclipse.californium.elements.auth.PreSharedKeyIdentity;
+import org.eclipse.californium.elements.util.DatagramReader;
+import org.eclipse.californium.elements.util.DatagramWriter;
 import org.eclipse.californium.scandium.category.Small;
 import org.eclipse.californium.scandium.dtls.cipher.CipherSuite;
 import org.junit.Before;
@@ -53,7 +55,7 @@ public class DTLSSessionTest {
 	@Test
 	public void testDefaultMaxFragmentLengthCompliesWithSpec() {
 		// when instantiating a default server session
-		session = new DTLSSession(PEER_ADDRESS, false);
+		session = new DTLSSession(PEER_ADDRESS);
 
 		// then the max fragment size is as specified in DTLS spec
 		assertThat(session.getMaxFragmentLength(), is(DEFAULT_MAX_FRAGMENT_LENGTH));
@@ -102,32 +104,53 @@ public class DTLSSessionTest {
 	@Test
 	public void testRecordFromPreviousEpochIsDiscarded() {
 		session.setReadEpoch(1);
-		assertFalse(session.isRecordProcessable(0, 15));
+		assertFalse(session.isRecordProcessable(0, 15, false));
 	}
 
 	@Test
 	public void testRecordFromFutureEpochIsDiscarded() {
 		session.setReadEpoch(1);
-		assertFalse(session.isRecordProcessable(2, 15));
+		assertFalse(session.isRecordProcessable(2, 15, false));
 	}
 
 	@Test
 	public void testRecordShiftsReceiveWindow() {
 		int epoch = 0;
 		session.setReadEpoch(epoch);
-		session.markRecordAsRead(epoch, 0);
+		//session.markRecordAsRead(epoch, 0);
 		session.markRecordAsRead(epoch, 2);
-		assertFalse(session.isRecordProcessable(0, 0));
-		assertTrue(session.isRecordProcessable(0, 1));
-		assertFalse(session.isRecordProcessable(0, 2));
-		assertTrue(session.isRecordProcessable(0, 64));
+		assertTrue(session.isRecordProcessable(0, 0, false));
+		assertTrue(session.isRecordProcessable(0, 1, false));
+		assertFalse(session.isRecordProcessable(0, 2, false));
+		assertTrue(session.isRecordProcessable(0, 64, false));
 
 		// make a right shift by 1 position
 		session.markRecordAsRead(epoch, 64);
-		assertFalse(session.isRecordProcessable(0, 0));
-		assertTrue(session.isRecordProcessable(0, 1));
-		assertFalse(session.isRecordProcessable(0, 2));
-		assertFalse(session.isRecordProcessable(0, 64));
+		assertFalse(session.isRecordProcessable(0, 0, false));
+		assertTrue(session.isRecordProcessable(0, 1, false));
+		assertFalse(session.isRecordProcessable(0, 2, false));
+		assertFalse(session.isRecordProcessable(0, 64, false));
+	}
+
+	@Test
+	public void testRecordShiftsReceiveWindowUsingWindowFilter() {
+		int epoch = 0;
+		session.setReadEpoch(epoch);
+		//session.markRecordAsRead(epoch, 0);
+		session.markRecordAsRead(epoch, 2);
+		assertTrue(session.isRecordProcessable(0, 0, true));
+		assertTrue(session.isRecordProcessable(0, 1, true));
+		assertFalse(session.isRecordProcessable(0, 2, true));
+		assertTrue(session.isRecordProcessable(0, 64, true));
+		assertTrue(session.isRecordProcessable(0, 100, true));
+
+		// make a right shift by 1 position
+		session.markRecordAsRead(epoch, 64);
+		assertTrue(session.isRecordProcessable(0, 0, true));
+		assertTrue(session.isRecordProcessable(0, 1, true));
+		assertFalse(session.isRecordProcessable(0, 2, true));
+		assertFalse(session.isRecordProcessable(0, 64, true));
+		assertTrue(session.isRecordProcessable(0, 100, true));
 	}
 
 	@Test
@@ -136,19 +159,19 @@ public class DTLSSessionTest {
 		int epoch = session.getReadEpoch();
 		session.markRecordAsRead(epoch, 0);
 		session.markRecordAsRead(epoch, 2);
-		assertFalse(session.isRecordProcessable(session.getReadEpoch(), 0));
-		assertFalse(session.isRecordProcessable(session.getReadEpoch(), 2));
+		assertFalse(session.isRecordProcessable(session.getReadEpoch(), 0, false));
+		assertFalse(session.isRecordProcessable(session.getReadEpoch(), 2, false));
 
 		session.setReadState(session.getReadState()); // dummy invocation to provoke epoch switch
-		assertTrue(session.isRecordProcessable(session.getReadEpoch(), 0));
-		assertTrue(session.isRecordProcessable(session.getReadEpoch(), 2));
+		assertTrue(session.isRecordProcessable(session.getReadEpoch(), 0, false));
+		assertTrue(session.isRecordProcessable(session.getReadEpoch(), 2, false));
 	}
 
 	@Test
 	public void testConstructorEnforcesMaxSequenceNo() {
-		session = new DTLSSession(PEER_ADDRESS, false, DtlsTestTools.MAX_SEQUENCE_NO); // should succeed
+		session = new DTLSSession(PEER_ADDRESS, DtlsTestTools.MAX_SEQUENCE_NO); // should succeed
 		try {
-			session = new DTLSSession(PEER_ADDRESS, false, DtlsTestTools.MAX_SEQUENCE_NO + 1); // should fail
+			session = new DTLSSession(PEER_ADDRESS, DtlsTestTools.MAX_SEQUENCE_NO + 1); // should fail
 			fail("DTLSSession constructor should have refused initial sequence number > 2^48 - 1");
 		} catch (IllegalArgumentException e) {
 			// ok
@@ -157,7 +180,7 @@ public class DTLSSessionTest {
 
 	@Test(expected = IllegalStateException.class)
 	public void testGetSequenceNumberEnforcesMaxSequenceNo() {
-		session = new DTLSSession(PEER_ADDRESS, false, DtlsTestTools.MAX_SEQUENCE_NO);
+		session = new DTLSSession(PEER_ADDRESS, DtlsTestTools.MAX_SEQUENCE_NO);
 		session.getSequenceNumber(); // should throw exception
 	}
 
@@ -174,22 +197,65 @@ public class DTLSSessionTest {
 		assertThatSessionsHaveSameRelevantPropertiesForResumption(sessionToResume, session);
 	}
 
+	@Test
+	public void testSessionWithServerNamesCanBeResumedFromSessionTicket() throws GeneralSecurityException {
+		// GIVEN a session ticket for an established server session
+		session = newEstablishedServerSession(PEER_ADDRESS, CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8, true);
+		session.setVirtualHost("test");
+		SessionTicket ticket = session.getSessionTicket();
+
+		// WHEN creating a new session to be resumed from the ticket
+		DTLSSession sessionToResume = new DTLSSession(session.getSessionIdentifier(), session.getPeer(), ticket, 1);
+
+		// THEN the new session contains all relevant pending state to perform an abbreviated handshake
+		assertThatSessionsHaveSameRelevantPropertiesForResumption(sessionToResume, session);
+	}
+
+	@Test
+	public void testSessionCanBeResumedFromSerializedSessionTicket() throws GeneralSecurityException {
+		// GIVEN a session ticket for an established server session
+		session = newEstablishedServerSession(PEER_ADDRESS, CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8, true);
+		SessionTicket ticket = serialize(session.getSessionTicket());
+
+		// WHEN creating a new session to be resumed from the ticket
+		DTLSSession sessionToResume = new DTLSSession(session.getSessionIdentifier(), session.getPeer(), ticket, 1);
+
+		// THEN the new session contains all relevant pending state to perform an abbreviated handshake
+		assertThatSessionsHaveSameRelevantPropertiesForResumption(sessionToResume, session);
+	}
+
+	@Test
+	public void testSessionWithServerNamesCanBeResumedFromSerializedSessionTicket() throws GeneralSecurityException {
+		// GIVEN a session ticket for an established server session
+		session = newEstablishedServerSession(PEER_ADDRESS, CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8, true);
+		session.setVirtualHost("test");
+		SessionTicket ticket = serialize(session.getSessionTicket());
+
+		// WHEN creating a new session to be resumed from the ticket
+		DTLSSession sessionToResume = new DTLSSession(session.getSessionIdentifier(), session.getPeer(), ticket, 1);
+
+		// THEN the new session contains all relevant pending state to perform an abbreviated handshake
+		assertThatSessionsHaveSameRelevantPropertiesForResumption(sessionToResume, session);
+	}
+
 	public static void assertThatSessionsHaveSameRelevantPropertiesForResumption(DTLSSession sessionToResume, DTLSSession establishedSession) {
 		assertThat(sessionToResume.getSessionIdentifier(), is(establishedSession.getSessionIdentifier()));
 		assertThat(sessionToResume.getCipherSuite(), is(establishedSession.getWriteState().getCipherSuite()));
 		assertThat(sessionToResume.getCompressionMethod(), is(establishedSession.getWriteState().getCompressionMethod()));
 		assertThat(sessionToResume.getMasterSecret(), is(establishedSession.getMasterSecret()));
 		assertThat(sessionToResume.getPeerIdentity(), is(establishedSession.getPeerIdentity()));
+		assertThat(sessionToResume.getServerNames(), is(establishedSession.getServerNames()));
 	}
 
 	public static DTLSSession newEstablishedServerSession(InetSocketAddress peerAddress, CipherSuite cipherSuite, boolean useRawPublicKeys) {
-		DTLSSession session = new DTLSSession(peerAddress, false);
+		CertificateType type = useRawPublicKeys ? CertificateType.RAW_PUBLIC_KEY : CertificateType.X_509;
+		DTLSSession session = new DTLSSession(peerAddress);
 		DTLSConnectionState currentState = newConnectionState(cipherSuite);
 		session.setSessionIdentifier(new SessionId());
 		session.setReadState(currentState);
 		session.setWriteState(currentState);
-		session.setReceiveRawPublicKey(useRawPublicKeys);
-		session.setSendRawPublicKey(useRawPublicKeys);
+		session.setReceiveCertificateType(type);
+		session.setSendCertificateType(type);
 		session.setMasterSecret(getRandomBytes(48));
 		session.setPeerIdentity(new PreSharedKeyIdentity("client_identity"));
 		return session;
@@ -209,6 +275,13 @@ public class DTLSSessionTest {
 		byte[] result = new byte[length];
 		RANDOM.nextBytes(result);
 		return result;
+	}
+	
+	private static SessionTicket serialize(SessionTicket ticket) {
+		DatagramWriter writer = new DatagramWriter();
+		ticket.encode(writer);
+		DatagramReader reader = new DatagramReader(writer.toByteArray());
+		return SessionTicket.decode(reader);
 	}
 
 }

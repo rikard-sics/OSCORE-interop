@@ -31,6 +31,8 @@
  *                                                    matching with a DtlsEndpointContext
  *    Achim Kraus (Bosch Software Innovations GmbH) - fix rare NullPointerException
  *                                                    on stop()
+ *    Achim Kraus (Bosch Software Innovations GmbH) - make connector extendible to
+ *                                                    support multicast sockets
  ******************************************************************************/
 package org.eclipse.californium.elements;
 
@@ -45,6 +47,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+
+import org.eclipse.californium.elements.util.Bytes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,11 +76,12 @@ public class UDPConnector implements Connector {
 
 	static final ThreadGroup ELEMENTS_THREAD_GROUP = new ThreadGroup("Californium/Elements"); //$NON-NLS-1$
 
-	private volatile boolean running;
+	protected volatile boolean running;
+
+	protected final InetSocketAddress localAddr;
 
 	private DatagramSocket socket;
 
-	private final InetSocketAddress localAddr;
 	private volatile InetSocketAddress effectiveAddr;
 
 	private List<Thread> receiverThreads;
@@ -141,7 +146,17 @@ public class UDPConnector implements Connector {
 		}
 
 		// if localAddr is null or port is 0, the system decides
-		socket = new DatagramSocket(localAddr.getPort(), localAddr.getAddress());
+		init(new DatagramSocket(localAddr.getPort(), localAddr.getAddress()));
+	}
+
+	/**
+	 * Initialize connector using the provided socket.
+	 * 
+	 * @param socket datagram socket for communication
+	 * @throws IOException  if there is an error in the datagram socket calls.
+	 */
+	protected void init(DatagramSocket socket) throws IOException {
+		this.socket = socket;
 		effectiveAddr = (InetSocketAddress) socket.getLocalSocketAddress();
 
 		if (receiveBufferSize != UNDEFINED) {
@@ -317,7 +332,8 @@ public class UDPConnector implements Connector {
 
 		private Receiver(String name) {
 			super(name);
-			this.size = receiverPacketSize;
+			// we add one byte to be able to detect potential truncation.
+			this.size = receiverPacketSize + 1;
 			this.datagram = new DatagramPacket(new byte[size], size);
 		}
 
@@ -326,16 +342,23 @@ public class UDPConnector implements Connector {
 			DatagramSocket currentSocket = getSocket();
 			if (currentSocket != null) {
 				currentSocket.receive(datagram);
-				LOGGER.debug("UDPConnector ({}) received {} bytes from {}:{}", effectiveAddr, datagram.getLength(),
-						datagram.getAddress(), datagram.getPort());
-				byte[] bytes = Arrays.copyOfRange(datagram.getData(), datagram.getOffset(), datagram.getLength());
-				RawData msg = RawData.inbound(bytes,
-						new UdpEndpointContext(new InetSocketAddress(datagram.getAddress(), datagram.getPort())),
-						false);
-				receiver.receiveData(msg);
+				if (datagram.getLength() >= size) {
+					// too large datagram for our buffer! data could have been
+					// truncated, so we discard it.
+					LOGGER.debug(
+							"UDPConnector ({}) received truncated UDP datagram from {}:{}. Maximum size allowed {}. Discarding ...",
+							effectiveAddr, datagram.getAddress(), datagram.getPort(), size - 1);
+				} else {
+					LOGGER.debug("UDPConnector ({}) received {} bytes from {}:{}", effectiveAddr, datagram.getLength(),
+							datagram.getAddress(), datagram.getPort());
+					byte[] bytes = Arrays.copyOfRange(datagram.getData(), datagram.getOffset(), datagram.getLength());
+					RawData msg = RawData.inbound(bytes,
+							new UdpEndpointContext(new InetSocketAddress(datagram.getAddress(), datagram.getPort())),
+							false);
+					receiver.receiveData(msg);
+				}
 			}
 		}
-
 	}
 
 	private class Sender extends NetworkStageThread {
@@ -344,7 +367,7 @@ public class UDPConnector implements Connector {
 
 		private Sender(String name) {
 			super(name);
-			this.datagram = new DatagramPacket(new byte[0], 0);
+			this.datagram = new DatagramPacket(Bytes.EMPTY, 0);
 		}
 
 		protected void work() throws InterruptedException {

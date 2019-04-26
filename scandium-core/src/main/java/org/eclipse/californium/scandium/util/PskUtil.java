@@ -21,6 +21,7 @@ import org.eclipse.californium.scandium.dtls.AlertMessage.AlertDescription;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertLevel;
 import org.eclipse.californium.scandium.dtls.DTLSSession;
 import org.eclipse.californium.scandium.dtls.HandshakeException;
+import org.eclipse.californium.scandium.dtls.PskPublicInformation;
 import org.eclipse.californium.scandium.dtls.pskstore.PskStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,20 +30,22 @@ import org.slf4j.LoggerFactory;
  * Extracts psk credentials from the current {@code DTLSSession}.
  */
 public class PskUtil {
-	
+
 	private static final Logger LOGGER = LoggerFactory.getLogger(PskUtil.class.getName());
-	
-	private byte[] psk;
-	
-	private PreSharedKeyIdentity pskIdentity;
-	
+
+	private byte[] pskSecret;
+
+	private PskPublicInformation pskIdentity;
+
+	private PreSharedKeyIdentity pskPrincipal;
+
 	/**
 	 * Retrieves preshared key identity and preshared key for the given dtls session and psk store.
 	 * 
 	 * @param sniEnabled - {@code true} if SNI should be enabled for negotiating the given session
 	 * @param session - {@code DTLSSession}
 	 * @param pskStore - {@code PskStore}
-	 * @throws HandshakeException
+	 * @throws HandshakeException if no data is available for the provided session
 	 * @throws NullPointerException if either session or pskStore is {@code null}
 	 */
 	public PskUtil(boolean sniEnabled, DTLSSession session, PskStore pskStore) throws HandshakeException {
@@ -52,70 +55,80 @@ public class PskUtil {
 		if (pskStore == null) {
 			throw new NullPointerException("psk store cannot be null");
 		}
-		String virtualHostName = session.getVirtualHost();
-		String identity = null;
-		if (sniEnabled && virtualHostName != null) {
-			ServerNames virtualHost = ServerNames.newInstance().add(ServerName.fromHostName(virtualHostName));
+		ServerNames virtualHost = session.getServerNames();
+		if (sniEnabled && virtualHost != null) {
 			if (!session.isSniSupported()) {
-				LOGGER.warn("client is configured to use SNI but server does not support it, PSK authentication is likely to fail");
+				LOGGER.warn(
+						"client is configured to use SNI but server does not support it, PSK authentication is likely to fail");
 			}
 			// look up identity in scope of virtual host
-			identity = pskStore.getIdentity(session.getPeer(), virtualHost);
-			if (identity == null) {
-				AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.HANDSHAKE_FAILURE, session.getPeer());
-				throw new HandshakeException(
-						String.format(
-								"No Identity found for peer [address: %s, virtual host: %s]",
-								session.getPeer(), virtualHostName),
-						alert);
-			} else {
-				this.psk = pskStore.getKey(virtualHost, identity);
-				if (psk == null) {
-					AlertMessage alert = new AlertMessage(AlertLevel.FATAL,	AlertDescription.HANDSHAKE_FAILURE, session.getPeer());
-					throw new HandshakeException(
-							String.format("No pre-shared key found for [virtual host: %s, identity: %s]",
-									virtualHostName, identity),
-							alert);
-				} else {
-					this.pskIdentity = new PreSharedKeyIdentity(virtualHostName, identity);
-				}
+			String virtualHostName = session.getVirtualHost();
+			pskIdentity = pskStore.getIdentity(session.getPeer(), virtualHost);
+			if (pskIdentity == null) {
+				AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.HANDSHAKE_FAILURE,
+						session.getPeer());
+				throw new HandshakeException(String.format("No Identity found for peer [address: %s, virtual host: %s]",
+						session.getPeer(), virtualHostName), alert);
 			}
+			this.pskSecret = pskStore.getKey(virtualHost, pskIdentity);
+			if (pskSecret == null) {
+				AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.HANDSHAKE_FAILURE,
+						session.getPeer());
+				throw new HandshakeException(
+						String.format("No pre-shared key found for [virtual host: %s, identity: %s]", virtualHostName,
+								pskIdentity),
+						alert);
+			}
+			this.pskPrincipal = new PreSharedKeyIdentity(virtualHostName, pskIdentity.getPublicInfoAsString());
 		} else {
-			identity = pskStore.getIdentity(session.getPeer());
-			if (identity == null) {
-				AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.HANDSHAKE_FAILURE, session.getPeer());
+			pskIdentity = pskStore.getIdentity(session.getPeer());
+			if (pskIdentity == null) {
+				AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.HANDSHAKE_FAILURE,
+						session.getPeer());
 				throw new HandshakeException(
 						String.format("No Identity found for peer [address: %s]", session.getPeer()), alert);
-			} else {
-				this.psk = pskStore.getKey(identity);
-				if (psk == null) {
-					AlertMessage alert = new AlertMessage(AlertLevel.FATAL,	AlertDescription.HANDSHAKE_FAILURE, session.getPeer());
-					throw new HandshakeException(
-							String.format("No pre-shared key found for [identity: %s]", identity), alert);
-				} else {
-					this.pskIdentity = new PreSharedKeyIdentity(identity);
-				}
 			}
-		}		
+			this.pskSecret = pskStore.getKey(pskIdentity);
+			if (pskSecret == null) {
+				AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.HANDSHAKE_FAILURE,
+						session.getPeer());
+				throw new HandshakeException(String.format("No pre-shared key found for [identity: %s]", pskIdentity),
+						alert);
+			}
+			if (sniEnabled) {
+				this.pskPrincipal = new PreSharedKeyIdentity(null, pskIdentity.getPublicInfoAsString());
+			} else {
+				this.pskPrincipal = new PreSharedKeyIdentity(pskIdentity.getPublicInfoAsString());
+			}
+		}
 	}
-	
+
 	/**
-	 * This method returns the psk identity either for the virtual host hosted on session's peer 
-	 * or for the session's peer itself.
+	 * This method returns the psk principal either for the virtual host hosted
+	 * on session's peer or for the session's peer itself.
 	 * 
 	 * @return {@code PreSharedKeyIdentity}
 	 */
-	public PreSharedKeyIdentity getPskIdentity() {
+	public PreSharedKeyIdentity getPskPrincipal() {
+		return this.pskPrincipal;
+	}
+
+	/**
+	 * Returns the PSK identity.
+	 * 
+	 * @return identity as public information
+	 */
+	public PskPublicInformation getPskPublicIdentity() {
 		return this.pskIdentity;
 	}
-	
+
 	/**
-	 * This method returns the pre shared key for the current 
+	 * This method returns the pre shared key for the current
 	 * {@code DTLSSession} and {@code PskStore}.
 	 * 
 	 * @return byte array
 	 */
-	public byte[] getPreSharedKey(){
-		return this.psk;
+	public byte[] getPreSharedKey() {
+		return this.pskSecret;
 	}
 }

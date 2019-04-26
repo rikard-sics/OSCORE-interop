@@ -11,12 +11,15 @@
  *    http://www.eclipse.org/org/documents/edl-v10.html.
  * 
  * Contributors:
- *    Bosch Software Innovations GmbH - initial implementation. 
- *    Achim Kraus (Bosch Software Innovations GmbH) - introduce configurable 
- *                                                    key store type and 
- *                                                    InputStreamFactory. 
- *    Achim Kraus (Bosch Software Innovations GmbH) - use file system, if 
- *                                                    no scheme is provided in URI 
+ *    Bosch Software Innovations GmbH - initial implementation.
+ *    Achim Kraus (Bosch Software Innovations GmbH) - introduce configurable
+ *                                                    key store type and
+ *                                                    InputStreamFactory.
+ *    Achim Kraus (Bosch Software Innovations GmbH) - use file system, if
+ *                                                    no scheme is provided in URI
+ *    Achim Kraus (Bosch Software Innovations GmbH) - add SSLContext protocol to
+ *                                                    selective disable TLSv1.3 for
+ *                                                    TLSv1.2 dependent unit tests.
  ******************************************************************************/
 package org.eclipse.californium.elements.util;
 
@@ -133,6 +136,11 @@ public class SslContextUtil {
 	 */
 	public static final String PKCS12_TYPE = "PKCS12";
 	/**
+	 * Default protocol used for 
+	 * {@link #createSSLContext(String, PrivateKey, X509Certificate[], Certificate[])}.
+	 */
+	public static final String DEFAULT_SSL_PROTOCOL = "TLSv1.2";
+	/**
 	 * Schema delimiter.
 	 */
 	private static final String SCHEME_DELIMITER = "://";
@@ -167,7 +175,7 @@ public class SslContextUtil {
 	 * @throws IllegalArgumentException if trust doesn't match
 	 *             keystore#hexstorepwd#aliaspattern or no matching trusts are
 	 *             found
-	 * @throws NullPointerException if trust is null.
+	 * @throws NullPointerException if trust is {@code null}.
 	 * @see #PARAMETER_SEPARATOR
 	 */
 	public static Certificate[] loadTrustedCertificates(String trust) throws IOException, GeneralSecurityException {
@@ -193,7 +201,7 @@ public class SslContextUtil {
 	 * @throws IllegalArgumentException if keys doesn't match
 	 *             keystore#hexstorepwd#hexkeypwd#alias or no matching trusts
 	 *             are found
-	 * @throws NullPointerException if credentials is null.
+	 * @throws NullPointerException if credentials is {@code null}.
 	 * @see #PARAMETER_SEPARATOR
 	 */
 	public static Credentials loadCredentials(String credentials) throws IOException, GeneralSecurityException {
@@ -222,7 +230,7 @@ public class SslContextUtil {
 	 * @throws IOException if key store could not be loaded.
 	 * @throws GeneralSecurityException if security setup failed.
 	 * @throws IllegalArgumentException if no matching trusts are found
-	 * @throws NullPointerException if keyStoreUri or storePassword is null.
+	 * @throws NullPointerException if keyStoreUri or storePassword is {@code null}.
 	 */
 	public static TrustManager[] loadTrustManager(String keyStoreUri, String aliasPattern, char[] storePassword)
 			throws IOException, GeneralSecurityException {
@@ -244,7 +252,7 @@ public class SslContextUtil {
 	 * @throws GeneralSecurityException if security setup failed.
 	 * @throws IllegalArgumentException if no matching credentials are found
 	 * @throws NullPointerException if keyStoreUri, storePassword, or
-	 *             keyPassword is null.
+	 *             keyPassword is {@code null}.
 	 */
 	public static KeyManager[] loadKeyManager(String keyStoreUri, String alias, char[] storePassword,
 			char[] keyPassword) throws IOException, GeneralSecurityException {
@@ -267,7 +275,7 @@ public class SslContextUtil {
 	 * @throws IOException if key store could not be loaded.
 	 * @throws GeneralSecurityException if security setup failed.
 	 * @throws IllegalArgumentException if no matching certificates are found
-	 * @throws NullPointerException if keyStoreUri or storePassword is null.
+	 * @throws NullPointerException if keyStoreUri or storePassword is {@code null}.
 	 */
 	public static Certificate[] loadTrustedCertificates(String keyStoreUri, String aliasPattern, char[] storePassword)
 			throws IOException, GeneralSecurityException {
@@ -312,7 +320,7 @@ public class SslContextUtil {
 	 * @throws IllegalArgumentException if alias is empty, or no matching
 	 *             credentials are found.
 	 * @throws NullPointerException if keyStoreUri, storePassword, keyPassword,
-	 *             or alias is null.
+	 *             or alias is {@code null}.
 	 */
 	public static Credentials loadCredentials(String keyStoreUri, String alias, char[] storePassword,
 			char[] keyPassword) throws IOException, GeneralSecurityException {
@@ -351,7 +359,7 @@ public class SslContextUtil {
 	 * @throws IllegalArgumentException if alias is empty, or no matching
 	 *             certificate chain is found.
 	 * @throws NullPointerException if keyStoreUri, storePassword, or alias is
-	 *             null.
+	 *             {@code null}.
 	 */
 	public static X509Certificate[] loadCertificateChain(String keyStoreUri, String alias, char[] storePassword)
 			throws IOException, GeneralSecurityException {
@@ -610,7 +618,7 @@ public class SslContextUtil {
 	 * @throws IllegalArgumentException if null, a empty array is provided or a
 	 *             none x509 certificate was found or a array entry was null.
 	 */
-	private static X509Certificate[] asX509Certificates(Certificate[] certificates) {
+	public static X509Certificate[] asX509Certificates(Certificate[] certificates) {
 		if (null == certificates || 0 == certificates.length) {
 			throw new IllegalArgumentException("certificates missing!");
 		}
@@ -632,28 +640,55 @@ public class SslContextUtil {
 	/**
 	 * Create SSLContext with provided credentials and trusts.
 	 * 
+	 * Uses {@link #DEFAULT_SSL_PROTOCOL}.
+	 * 
 	 * @param alias alias to be used in KeyManager. Used for identification
 	 *            according the X509ExtendedKeyManager API to select the
 	 *            credentials matching the provided key. Though the create
 	 *            KeyManager currently only supports on set of credentials, the
-	 *            alias is only used to select that. If null, its replaced by a
-	 *            default "californium".
+	 *            alias is only used to select that. If {@code null}, it's
+	 *            replaced by a default "californium".
 	 * @param privateKey private key
 	 * @param chain certificate trust chain related to private key.
 	 * @param trusts trusted certificates.
 	 * @return created SSLContext.
 	 * @throws GeneralSecurityException if security setup failed.
-	 * @throws IllegalArgumentException, if private key is null, or the chain is
-	 *             null or empty, or the trusts null or empty.
+	 * @throws NullPointerException if private key, or the chain, or the trusts is
+	 *             {@code null}.
+	 * @throws IllegalArgumentException if the chain or trusts is empty.
 	 */
 	public static SSLContext createSSLContext(String alias, PrivateKey privateKey, X509Certificate[] chain,
 			Certificate[] trusts) throws GeneralSecurityException {
+		return createSSLContext(alias, privateKey, chain, trusts, DEFAULT_SSL_PROTOCOL);
+	}
+
+	/**
+	 * Create SSLContext with provided credentials and trusts.
+	 * 
+	 * @param alias alias to be used in KeyManager. Used for identification
+	 *            according the X509ExtendedKeyManager API to select the
+	 *            credentials matching the provided key. Though the create
+	 *            KeyManager currently only supports on set of credentials, the
+	 *            alias is only used to select that. If {@code null}, it's
+	 *            replaced by a default "californium".
+	 * @param privateKey private key
+	 * @param chain certificate trust chain related to private key.
+	 * @param trusts trusted certificates.
+	 * @param protocol specific protocol for SSLContext. See {@link SSLContext#getInstance(String)}.
+	 * @return created SSLContext.
+	 * @throws GeneralSecurityException if security setup failed.
+	 * @throws NullPointerException if private key, or the chain, or the trusts is
+	 *             {@code null}.
+	 * @throws IllegalArgumentException if the chain or trusts is empty.
+	 */
+	public static SSLContext createSSLContext(String alias, PrivateKey privateKey, X509Certificate[] chain,
+			Certificate[] trusts, String protocol) throws GeneralSecurityException {
 		if (null == alias) {
 			alias = "californium";
 		}
 		KeyManager[] keyManager = createKeyManager(alias, privateKey, chain);
 		TrustManager[] trustManager = createTrustManager(alias, trusts);
-		SSLContext sslContext = SSLContext.getInstance("TLS");
+		SSLContext sslContext = SSLContext.getInstance(protocol);
 		sslContext.init(keyManager, trustManager, null);
 		return sslContext;
 	}
@@ -667,8 +702,9 @@ public class SslContextUtil {
 	 * @param chain certificate chain.
 	 * @return key manager.
 	 * @throws GeneralSecurityException if security setup failed.
-	 * @throws IllegalArgumentException, if private key is null, or the chain is
-	 *             null or empty.
+	 * @throws NullPointerException if private key or the chain is
+	 *             {@code null}.
+	 * @throws IllegalArgumentException if the chain is empty.
 	 */
 	public static KeyManager[] createKeyManager(String alias, PrivateKey privateKey, X509Certificate[] chain)
 			throws GeneralSecurityException {
@@ -705,8 +741,8 @@ public class SslContextUtil {
 	 * @param trusts trusted certificates
 	 * @return trust manager
 	 * @throws GeneralSecurityException if security setup failed.
-	 * @throws NullPointerException, if trusted certificates is null.
-	 * @throws IllegalArgumentException, if trusted certificates is empty.
+	 * @throws NullPointerException if trusted certificates is {@code null}.
+	 * @throws IllegalArgumentException if trusted certificates is empty.
 	 */
 	public static TrustManager[] createTrustManager(String alias, Certificate[] trusts)
 			throws GeneralSecurityException {

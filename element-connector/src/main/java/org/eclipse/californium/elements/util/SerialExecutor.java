@@ -29,12 +29,17 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Serial executor.
  * 
  * Serialize job execution before passing the jobs to a provided executor.
  */
 public class SerialExecutor extends AbstractExecutorService {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(SerialExecutor.class.getName());
 
 	/**
 	 * Target executor to execute job serially.
@@ -74,7 +79,7 @@ public class SerialExecutor extends AbstractExecutorService {
 	/**
 	 * Create serial executor
 	 * 
-	 * @param executor target executor. If {@link null}, the executor is
+	 * @param executor target executor. If {@code null}, the executor is
 	 *            shutdown.
 	 */
 	public SerialExecutor(final Executor executor) {
@@ -85,7 +90,7 @@ public class SerialExecutor extends AbstractExecutorService {
 	}
 
 	@Override
-	public final void execute(final Runnable command) {
+	public void execute(final Runnable command) {
 		lock.lock();
 		try {
 			if (shutdown) {
@@ -270,6 +275,8 @@ public class SerialExecutor extends AbstractExecutorService {
 							setOwner();
 							try {
 								command.run();
+							} catch (Throwable t) {
+								LOGGER.error("unexpected error occurred:", t);
 							} finally {
 								clearOwner();
 							}

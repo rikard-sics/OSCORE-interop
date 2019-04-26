@@ -22,9 +22,11 @@
  *    Achim Kraus (Bosch Software Innovations GmbH) - use EndpointContext
  *    Bosch Software Innovations GmbH - migrate to SLF4J
  *    Achim Kraus (Bosch Software Innovations GmbH) - remove "is last", not longer meaningful
+ *    Achim Kraus (Bosch Software Innovations GmbH) - fix openjdk-11 covariant return types
  ******************************************************************************/
 package org.eclipse.californium.core.network.stack;
 
+import java.nio.Buffer;
 import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,8 +80,10 @@ public final class Block2BlockwiseStatus extends BlockwiseStatus {
 		Block2BlockwiseStatus status = new Block2BlockwiseStatus(response.getPayloadSize(), response.getOptions().getContentFormat());
 		status.response = response;
 		status.exchange = exchange;
-		status.buf.put(response.getPayload());
-		status.buf.flip();
+		if (response.getPayload() != null) {
+			status.buf.put(response.getPayload());
+			((Buffer)status.buf).flip();
+		}
 		status.setCurrentSzx(determineResponseBlock2Szx(exchange, preferredBlockSize));
 		return status;
 	}
@@ -119,7 +123,6 @@ public final class Block2BlockwiseStatus extends BlockwiseStatus {
 	 * 
 	 * @param exchange The message exchange the transfer is part of.
 	 * @param request The request for retrieving the block.
-	 * @param block2 The options for retrieving the block.
 	 * @return The tracker.
 	 * @throws IllegalArgumentException if the request does not contain a block2 option.
 	 */
@@ -211,7 +214,6 @@ public final class Block2BlockwiseStatus extends BlockwiseStatus {
 	 * Adds the payload of an incoming response to the buffer.
 	 * 
 	 * @param responseBlock The incoming response.
-	 * @param block2 The block2 option contained in the response.
 	 * @return {@code true} if the payload could be added.
 	 * @throws NullPointerException if response block is {@code null}.
 	 * @throws IllegalArgumentException if the response block has no block2 option.
@@ -329,7 +331,7 @@ public final class Block2BlockwiseStatus extends BlockwiseStatus {
 			m = to < bodySize;
 
 			// crop payload -- do after calculation of m in case block==response
-			buf.position(from);
+			((Buffer)buf).position(from);
 			buf.get(blockPayload, 0, length);
 			block.setPayload(blockPayload);
 		}

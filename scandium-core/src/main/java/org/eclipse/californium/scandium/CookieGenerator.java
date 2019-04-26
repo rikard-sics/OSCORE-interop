@@ -31,6 +31,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.eclipse.californium.elements.util.ClockUtil;
 import org.eclipse.californium.scandium.dtls.ClientHello;
 import org.eclipse.californium.scandium.dtls.CompressionMethod;
 import org.eclipse.californium.scandium.dtls.cipher.CipherSuite;
@@ -107,6 +108,10 @@ public class CookieGenerator {
 
 	/**
 	 * Return a fresh HMAC algorithm instance.
+	 * 
+	 * @return fresh HMAC
+	 * @throws GeneralSecurityException if an security related exception occurs
+	 *             when refreshing the HMAC.
 	 */
 	private Mac getHMAC() throws GeneralSecurityException {
 
@@ -154,18 +159,16 @@ public class CookieGenerator {
 	 */
 	private boolean isKeyExpired() {
 		// consider sign wrap in longs (very optimistic about the uptime :-) )
-		return (System.nanoTime() - nextKeyGenerationNanos) >= 0;
+		return (ClockUtil.nanoRealtime() - nextKeyGenerationNanos) >= 0;
 	}
 
 	/**
 	 * Generate a new secret key for MAC algorithm.
 	 * 
 	 * MUST be called in write scope of {@link #lock}!
-	 * 
-	 * @return secret key for MAC algorithm (cookie generation).
 	 */
 	private void generateSecretKey() {
-		nextKeyGenerationNanos = System.nanoTime() + KEY_LIFE_TIME;
+		nextKeyGenerationNanos = ClockUtil.nanoRealtime() + KEY_LIFE_TIME;
 		rng.nextBytes(rd);
 		lastSecretKey = new SecretKeySpec(rd, "MAC");
 	}
@@ -181,6 +184,7 @@ public class CookieGenerator {
 	 * as suggested
 	 * <a href="http://tools.ietf.org/html/rfc6347#section-4.2.1">here</a>.
 	 *
+	 * @param clientHello received client hello to generate a cookie for
 	 * @return the cookie generated from the client's parameters
 	 * @throws GeneralSecurityException if the cookie cannot be computed
 	 */
@@ -197,7 +201,7 @@ public class CookieGenerator {
 		hmac.update((byte) clientHello.getClientVersion().getMajor());
 		hmac.update((byte) clientHello.getClientVersion().getMinor());
 		hmac.update(clientHello.getRandom().getRandomBytes());
-		hmac.update(clientHello.getSessionId().getId());
+		hmac.update(clientHello.getSessionId().getBytes());
 		hmac.update(CipherSuite.listToByteArray(clientHello.getCipherSuites()));
 		hmac.update(CompressionMethod.listToByteArray(clientHello.getCompressionMethods()));
 		return hmac.doFinal();

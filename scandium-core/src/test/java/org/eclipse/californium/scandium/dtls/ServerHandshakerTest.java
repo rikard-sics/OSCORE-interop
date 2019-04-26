@@ -34,6 +34,7 @@ import java.net.InetSocketAddress;
 import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -41,7 +42,7 @@ import java.util.List;
 import org.eclipse.californium.elements.util.DatagramWriter;
 import org.eclipse.californium.scandium.category.Medium;
 import org.eclipse.californium.scandium.config.DtlsConnectorConfig;
-import org.eclipse.californium.scandium.dtls.CertificateTypeExtension.CertificateType;
+import org.eclipse.californium.scandium.dtls.CertificateType;
 import org.eclipse.californium.scandium.dtls.cipher.CipherSuite;
 import org.eclipse.californium.scandium.dtls.cipher.ECDHECryptography.SupportedGroup;
 import org.eclipse.californium.scandium.dtls.pskstore.StaticPskStore;
@@ -82,13 +83,14 @@ public class ServerHandshakerTest {
 	@Before
 	public void setup() throws Exception {
 		endpoint = new InetSocketAddress(InetAddress.getLoopbackAddress(), 0);
-		session = new DTLSSession(endpoint, false);
+		session = new DTLSSession(endpoint);
 		recordLayer = new SimpleRecordLayer();
 		config = new DtlsConnectorConfig.Builder()
 				.setAddress(endpoint)
-				.setIdentity(privateKey, certificateChain, false)
+				.setSniEnabled(true)
+				.setIdentity(privateKey, certificateChain, CertificateType.X_509)
 				.setTrustStore(trustedCertificates)
-				.setSupportedCipherSuites(new CipherSuite[]{SERVER_CIPHER_SUITE})
+				.setSupportedCipherSuites(SERVER_CIPHER_SUITE)
 				.build();
 		handshaker = newHandshaker(config, session);
 
@@ -115,7 +117,7 @@ public class ServerHandshakerTest {
 		int networkMtu = ETHERNET_MTU;
 
 		// when instantiating a ServerHandshaker to negotiate a new session
-		handshaker = new ServerHandshaker(session, recordLayer, null, config, networkMtu);
+		handshaker = new ServerHandshaker(0, session, recordLayer, null, config, networkMtu);
 
 		// then a fragment created under the session's current write state should
 		// fit into a single unfragmented UDP datagram
@@ -162,7 +164,7 @@ public class ServerHandshakerTest {
 
 		// THEN the server names conveyed in the CLIENT_HELLO message
 		// are stored in the handshaker
-		ServerNames serverNames = handshaker.getIndicatedServerNames();
+		ServerNames serverNames = handshaker.getSession().getServerNames();
 		assertNotNull(serverNames);
 		assertThat(new String(serverNames.get(NameType.HOST_NAME)), is("iot.eclipse.org"));
 	}
@@ -213,10 +215,11 @@ public class ServerHandshakerTest {
 		config = new DtlsConnectorConfig.Builder()
 				.setAddress(endpoint)
 				.setIdentity(privateKey, DtlsTestTools.getPublicKey())
-				.setSupportedCipherSuites(new CipherSuite[]{
+				.setSupportedCipherSuites(
 						CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
-						CipherSuite.TLS_PSK_WITH_AES_128_CCM_8})
+						CipherSuite.TLS_PSK_WITH_AES_128_CCM_8)
 				.setPskStore(new StaticPskStore("client", "secret".getBytes()))
+				.setRpkTrustAll()
 				.build();
 		handshaker = newHandshaker(config, session);
 
@@ -224,7 +227,7 @@ public class ServerHandshakerTest {
 		// but offering both a public key based as well as a pre-shared key based cipher
 		// supported by the server
 		supportedClientCiphers = new byte[]{(byte) 0xC0, (byte) 0xAE, // TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8
-																				(byte) 0xC0, (byte) 0xA8};// TLS_PSK_WITH_AES_128_CCM_8
+											(byte) 0xC0, (byte) 0xA8};// TLS_PSK_WITH_AES_128_CCM_8
 		List<byte[]> extensions = new LinkedList<>();
 		SupportedGroup supportedGroup = getArbitrarySupportedGroup();
 		extensions.add(DtlsTestTools.newSupportedEllipticCurvesExtension(supportedGroup.getId()));
@@ -356,7 +359,7 @@ public class ServerHandshakerTest {
 	}
 
 	private ServerHandshaker newHandshaker(final DtlsConnectorConfig config, final DTLSSession session) throws HandshakeException {
-		return new ServerHandshaker(session, recordLayer, null, config, ETHERNET_MTU);
+		return new ServerHandshaker(0, session, recordLayer, null, config, ETHERNET_MTU);
 	}
 
 	private Record givenAHandshakerWithAQueuedMessage() throws Exception {
@@ -366,7 +369,7 @@ public class ServerHandshakerTest {
 		assertThat(handshaker.getNextReceiveSeq(), is(1));
 		// create client CERTIFICATE msg
 		X509Certificate[] clientChain = DtlsTestTools.getClientCertificateChain();
-		CertificateMessage certificateMsg = new CertificateMessage(clientChain, endpoint);
+		CertificateMessage certificateMsg = new CertificateMessage(Arrays.asList(clientChain), endpoint);
 		certificateMsg.setMessageSeq(1);
 		Record certificateMsgRecord = getRecordForMessage(0, 1, certificateMsg, senderAddress);
 
@@ -407,7 +410,7 @@ public class ServerHandshakerTest {
 		clientHelloMsg = newHandshakeMessage(HandshakeType.CLIENT_HELLO, messageSeq, clientHelloFragment);
 		byte[] dtlsRecord = DtlsTestTools.newDTLSRecord(ContentType.HANDSHAKE.getCode(), epoch,
 				sequenceNo, clientHelloMsg);
-		List<Record> list = Record.fromByteArray(dtlsRecord, endpoint);
+		List<Record> list = Record.fromByteArray(dtlsRecord, endpoint, null);
 		assertFalse("Should be able to deserialize DTLS Record from byte array", list.isEmpty());
 		Record record = list.get(0);
 		handshaker.processMessage(record);
@@ -475,7 +478,7 @@ public class ServerHandshakerTest {
 	private static Record getRecordForMessage(int epoch, int seqNo, DTLSMessage msg, InetSocketAddress peer) {
 		byte[] dtlsRecord = DtlsTestTools.newDTLSRecord(msg.getContentType().getCode(), epoch,
 				seqNo, msg.toByteArray());
-		List<Record> list = Record.fromByteArray(dtlsRecord, peer);
+		List<Record> list = Record.fromByteArray(dtlsRecord, peer, null);
 		assertFalse("Should be able to deserialize DTLS Record from byte array", list.isEmpty());
 		return list.get(0);
 	}

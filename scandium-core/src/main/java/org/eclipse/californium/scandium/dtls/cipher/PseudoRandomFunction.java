@@ -17,9 +17,11 @@
 package org.eclipse.californium.scandium.dtls.cipher;
 
 import java.security.InvalidKeyException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 import javax.crypto.Mac;
+import javax.crypto.ShortBufferException;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.eclipse.californium.elements.util.StandardCharsets;
@@ -32,7 +34,26 @@ import org.eclipse.californium.scandium.util.ByteArrayUtils;
  */
 public final class PseudoRandomFunction {
 
-	private static final String ALGORITHM_HMAC_SHA256 = "HmacSHA256";
+	/**
+	 * Test, if mac and hash is supported.
+	 * 
+	 * @param macName name of mac
+	 * @param hashName name of hash
+	 * @return {@code true}, if supported
+	 */
+	public final static boolean isSupported(String macName, String hashName) {
+		try {
+			Mac.getInstance(macName);
+		} catch (NoSuchAlgorithmException e) {
+			return false;
+		}
+		try {
+			MessageDigest.getInstance(hashName);
+		} catch (NoSuchAlgorithmException e) {
+			return false;
+		}
+		return true;
+	}
 
 	private PseudoRandomFunction() {
 	}
@@ -44,6 +65,7 @@ public final class PseudoRandomFunction {
 		MASTER_SECRET_LABEL("master secret", 48),
 		// The most key material required is 128 bytes, see
 		// http://tools.ietf.org/html/rfc5246#section-6.3
+		// (some cipher suites, not mentioned in rfc5246 requires more!)
 		KEY_EXPANSION_LABEL("key expansion", 128),
 		// The verify data is always 12 bytes long, see
 		// http://tools.ietf.org/html/rfc5246#section-7.4.9
@@ -73,14 +95,13 @@ public final class PseudoRandomFunction {
 		}
 	}
 
-	static byte[] doPRF(byte[] secret, byte[] label, byte[] seed, int length) {
+	static byte[] doPRF(String algorithmMac, byte[] secret, byte[] label, byte[] seed, int length) {
 		try {
-			Mac hmac = Mac.getInstance(ALGORITHM_HMAC_SHA256);
+			Mac hmac = Mac.getInstance(algorithmMac);
 			hmac.init(new SecretKeySpec(secret, "MAC"));
 			return doExpansion(hmac, ByteArrayUtils.concatenate(label, seed), length);
 		} catch (NoSuchAlgorithmException e) {
-			// cannot happen because every Java 7 VM is required to support HmacSHA256
-			throw new IllegalStateException(String.format("MAC algorithm %s is not available on JVM", ALGORITHM_HMAC_SHA256), e);
+			throw new IllegalStateException(String.format("MAC algorithm %s is not available on JVM", algorithmMac), e);
 		} catch (InvalidKeyException e) {
 			// according to http://www.ietf.org/rfc/rfc2104 (HMAC) section 3
 			// keys can be of arbitrary length
@@ -90,16 +111,33 @@ public final class PseudoRandomFunction {
 	}
 
 	/**
-	 * Does the pseudo random function as defined in <a
-	 * href="http://tools.ietf.org/html/rfc5246#section-5">RFC 5246</a>.
+	 * Does the pseudo random function as defined in
+	 * <a href="http://tools.ietf.org/html/rfc5246#section-5">RFC 5246</a>.
 	 * 
+	 * @param algorithmMac MAC algorithm name. e.g. "HmacSHA256"
 	 * @param secret the secret to use for the secure hash function
-	 * @param label the label to use for creating the original data
+	 * @param label the label to use for creating the original data. Uses the
+	 *            length from the label.
 	 * @param seed the seed to use for creating the original data
 	 * @return the expanded data
 	 */
-	public static final byte[] doPRF(byte[] secret, Label label, byte[] seed) {
-		return doPRF(secret, label.getBytes(), seed, label.length());
+	public static final byte[] doPRF(String algorithmMac, byte[] secret, Label label, byte[] seed) {
+		return doPRF(algorithmMac, secret, label.getBytes(), seed, label.length());
+	}
+
+	/**
+	 * Does the pseudo random function as defined in <a
+	 * href="http://tools.ietf.org/html/rfc5246#section-5">RFC 5246</a>.
+	 * 
+	 * @param algorithmMac MAC algorithm name. e.g. "HmacSHA256"
+	 * @param secret the secret to use for the secure hash function
+	 * @param label the label to use for creating the original data
+	 * @param seed the seed to use for creating the original data
+	 * @param length the length of data to create
+	 * @return the expanded data
+	 */
+	public static final byte[] doPRF(String algorithmMac, byte[] secret, Label label, byte[] seed, int length) {
+		return doPRF(algorithmMac, secret, label.getBytes(), seed, length);
 	}
 
 	/**
@@ -113,22 +151,55 @@ public final class PseudoRandomFunction {
 	 */
 	static final byte[] doExpansion(Mac hmac, byte[] data, int length) {
 		/*
-		 * P_hash(secret, seed) = HMAC_hash(secret, A(1) + seed) +
-		 * HMAC_hash(secret, A(2) + seed) + HMAC_hash(secret, A(3) + seed) + ...
-		 * where + indicates concatenation. A() is defined as: A(0) = seed, A(i)
-		 * = HMAC_hash(secret, A(i-1))
+		 * RFC 5246, chapter 5, page 15
+		 * 
+		 * P_hash(secret, seed) = 
+		 *    HMAC_hash(secret, A(1) + seed) +
+		 *    HMAC_hash(secret, A(2) + seed) + 
+		 *    HMAC_hash(secret, A(3) + seed) + ...
+		 * where + indicates concatenation.
+		 *  
+		 * A() is defined as: 
+		 *    A(0) = seed, 
+		 *    A(i) = HMAC_hash(secret, A(i-1))
 		 */
 
-		int iterations = (int) Math.ceil(length / (double) hmac.getMacLength());
-		byte[] expansion = new byte[0];
-
-		byte[] A = data;
-		for (int i = 0; i < iterations; i++) {
-			A = hmac.doFinal(A);
-			expansion = ByteArrayUtils.concatenate(expansion, hmac.doFinal(ByteArrayUtils.concatenate(A, data)));
+		int offset = 0;
+		final int macLength = hmac.getMacLength();
+		final byte[] aAndSeed = new byte[macLength + data.length];
+		final byte[] expansion = new byte[length];
+		try {
+			// copy appended seed to buffer end
+			System.arraycopy(data, 0, aAndSeed, macLength, data.length);
+			// calculate A(n) from A(0)
+			hmac.update(data);
+			while (true) {
+				// write result to "A(n) + seed"
+				hmac.doFinal(aAndSeed, 0);
+				// calculate HMAC_hash from "A(n) + seed"
+				hmac.update(aAndSeed);
+				final int nextOffset = offset + macLength;
+				if (nextOffset > length) {
+					// too large for expansion!
+					// write HMAC_hash result temporary to "A(n) + seed"
+					hmac.doFinal(aAndSeed, 0);
+					// write head of result from temporary "A(n) + seed" to expansion
+					System.arraycopy(aAndSeed, 0, expansion, offset, length - offset);
+					break;
+				} else {
+					// write HMAC_hash result to expansion
+					hmac.doFinal(expansion, offset);
+					if (nextOffset == length) {
+						break;
+					}
+				}
+				offset = nextOffset;
+				// calculate A(n+1) from "A(n) + seed" head ("A(n)")
+				hmac.update(aAndSeed, 0, macLength);
+			}
+		} catch (ShortBufferException e) {
+			e.printStackTrace();
 		}
-
-		return ByteArrayUtils.truncate(expansion, length);
+		return expansion;
 	}
-
 }

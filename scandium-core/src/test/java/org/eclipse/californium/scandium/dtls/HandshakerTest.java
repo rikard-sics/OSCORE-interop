@@ -40,6 +40,7 @@ import java.security.SecureRandom;
 import java.security.cert.CertPathValidatorException;
 import java.security.cert.CertificateExpiredException;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -102,8 +103,8 @@ public class HandshakerTest {
 			receivedMessages[i++] = 0;
 		}
 
-		session = new DTLSSession(endpoint, false);
-		session.setReceiveRawPublicKey(false);
+		session = new DTLSSession(endpoint);
+		session.setReceiveCertificateType(CertificateType.X_509);
 		session.setParameterAvailable();
 		certificateChain = DtlsTestTools.getServerCertificateChain();
 		trustAnchor = DtlsTestTools.getTrustedCertificates();
@@ -117,7 +118,7 @@ public class HandshakerTest {
 		builder.setCertificateVerifier(new StaticCertificateVerifier(null));
 		builder.setRpkTrustStore(rpkStore);
 		
-		handshaker = new Handshaker(false, session, recordLayer, null, builder.build(), 1500) {
+		handshaker = new Handshaker(false, 0, session, recordLayer, null, builder.build(), 1500) {
 
 			@Override
 			public void startHandshake() {
@@ -137,7 +138,7 @@ public class HandshakerTest {
 		builder.setCertificateVerifier(new StaticCertificateVerifier(trustAnchor));
 		builder.setRpkTrustStore(rpkStore);
 
-		handshakerWithAnchors = new Handshaker(false, session, recordLayer, null,
+		handshakerWithAnchors = new Handshaker(false, 0, session, recordLayer, null,
 				 builder.build(), 1500) {
 
 			@Override
@@ -173,7 +174,7 @@ public class HandshakerTest {
 		// THEN the ChangeCipherSpec message is not processed until the missing message arrives
 		assertFalse(handshaker.changeCipherSpecProcessed.get());
 		handshaker.expectChangeCipherSpecMessage();
-		PSKClientKeyExchange msg = new PSKClientKeyExchange("id", endpoint);
+		PSKClientKeyExchange msg = new PSKClientKeyExchange(new PskPublicInformation("id"), endpoint);
 		msg.setMessageSeq(0);
 		Record keyExchangeRecord = getRecordForMessage(0, 6, msg, senderAddress);
 		handshaker.processMessage(keyExchangeRecord);
@@ -193,7 +194,7 @@ public class HandshakerTest {
 		handshaker.expectChangeCipherSpecMessage();
 
 		// WHEN the peer's FINISHED message is received out-of-sequence before the ChangeCipherSpec message
-		Finished finished = new Finished(new byte[]{0x00, 0x01}, true, new byte[]{0x00, 0x00}, endpoint);
+		Finished finished = new Finished("HmacSHA256", new byte[]{0x00, 0x01}, true, new byte[]{0x00, 0x00}, endpoint);
 		finished.setMessageSeq(0);
 		Record finishedRecord = getRecordForMessage(1, 0, finished, senderAddress);
 		handshaker.processMessage(finishedRecord);
@@ -234,7 +235,8 @@ public class HandshakerTest {
 		givenAHandshakerWithAQueuedFragmentedMessage(futureSeqNo);
 
 		// when processing the missing message with nextseqNo
-		Record firstRecord = new Record(ContentType.HANDSHAKE, 0, 0, createCertificateMessage(nextSeqNo), session);
+		Record firstRecord = new Record(ContentType.HANDSHAKE, 0, 0, createCertificateMessage(nextSeqNo), session,
+				false, 0);
 		handshaker.processMessage(firstRecord);
 
 		// assert that all fragments have been re-assembled and the resulting message with
@@ -250,7 +252,7 @@ public class HandshakerTest {
 
 		int i = 1;
 		for (FragmentedHandshakeMessage fragment : handshakeMessageFragments) {
-			Record record = new Record(ContentType.HANDSHAKE, 0, i++, fragment, session);
+			Record record = new Record(ContentType.HANDSHAKE, 0, i++, fragment, session, false, 0);
 			handshaker.processMessage(record);
 		}
 		assertThat(receivedMessages[seqNo], is(0));
@@ -266,13 +268,39 @@ public class HandshakerTest {
 		}
 		assertThatReassembledMessageEqualsOriginalMessage(result);
 	}
-	
+
 	@Test
 	public void testHandleFragmentationBuffersMessagesSentInReverseOrder() throws Exception {
 		givenAFragmentedHandshakeMessage(certificateMessage);
 		HandshakeMessage result = null;
 		for (int i = handshakeMessageFragments.length - 1; i >= 0; i--) {
 			result = handshaker.handleFragmentation(handshakeMessageFragments[i]);
+		}
+		assertThatReassembledMessageEqualsOriginalMessage(result);
+	}
+
+	@Test
+	public void testHandleFragmentationReassemblesOverlappingMessages() throws Exception {
+		givenAFragmentedHandshakeMessage(certificateMessage, 250, 500);
+		HandshakeMessage result = null;
+		for (FragmentedHandshakeMessage fragment : handshakeMessageFragments) {
+			HandshakeMessage last = handshaker.handleFragmentation(fragment);
+			if (result == null) {
+				result = last;
+			}
+		}
+		assertThatReassembledMessageEqualsOriginalMessage(result);
+	}
+
+	@Test
+	public void testHandleFragmentationReassemblesMissOverlappingMessages() throws Exception {
+		givenAMissFragmentedHandshakeMessage(certificateMessage, 100,  200);
+		HandshakeMessage result = null;
+		for (FragmentedHandshakeMessage fragment : handshakeMessageFragments) {
+			HandshakeMessage last = handshaker.handleFragmentation(fragment);
+			if (result == null) {
+				result = last;
+			}
 		}
 		assertThatReassembledMessageEqualsOriginalMessage(result);
 	}
@@ -306,20 +334,36 @@ public class HandshakerTest {
 	}
 
 	private void givenAFragmentedHandshakeMessage(HandshakeMessage message) {
+		givenAFragmentedHandshakeMessage(message, 500, 500);
+	}
+
+	private void givenAFragmentedHandshakeMessage(HandshakeMessage message, int fragmentStep, int maxFragmentSize) {
 		List<FragmentedHandshakeMessage> fragments = new LinkedList<>();
 		byte[] serializedMsg = message.fragmentToByteArray();
-		int maxFragmentSize = 500;
 		int fragmentOffset = 0;
 		while (fragmentOffset < serializedMsg.length) {
 			int fragmentLength = Math.min(maxFragmentSize, serializedMsg.length - fragmentOffset);
 			byte[] fragment = new byte[fragmentLength];
 			System.arraycopy(serializedMsg, fragmentOffset, fragment, 0, fragmentLength);
-			FragmentedHandshakeMessage msg = new FragmentedHandshakeMessage(fragment, message.getMessageType(),
-					fragmentOffset, serializedMsg.length, endpoint);
-			msg.setMessageSeq(message.getMessageSeq());
+			FragmentedHandshakeMessage msg = new FragmentedHandshakeMessage(message.getMessageType(),
+					serializedMsg.length, message.getMessageSeq(), fragmentOffset, fragment, endpoint);
 			fragments.add(msg);
-			fragmentOffset += fragmentLength;
+			if (fragmentOffset + fragmentLength == serializedMsg.length) {
+				fragmentOffset += fragmentLength;
+			} else {
+				fragmentOffset += Math.min(fragmentLength, fragmentStep);
+			}
 		}
+		handshakeMessageFragments = fragments.toArray(new FragmentedHandshakeMessage[] {});
+	}
+
+	private void givenAMissFragmentedHandshakeMessage(HandshakeMessage message, int fragmentStep, int maxFragmentSize) {
+		givenAFragmentedHandshakeMessage(message, fragmentStep, maxFragmentSize);
+		List<FragmentedHandshakeMessage> fragments = new LinkedList<>(Arrays.asList(handshakeMessageFragments));
+		fragments.remove(fragments.size() - 1);
+		fragments.remove(fragments.size() / 2);
+		givenAFragmentedHandshakeMessage(message, fragmentStep / 2, maxFragmentSize / 2);
+		fragments.addAll(Arrays.asList(handshakeMessageFragments));
 		handshakeMessageFragments = fragments.toArray(new FragmentedHandshakeMessage[] {});
 	}
 
@@ -329,7 +373,7 @@ public class HandshakerTest {
 		if (useRawPublicKey) {
 			message = new CertificateMessage(chain[0].getPublicKey().getEncoded(), peerAddress);
 		} else {
-			message = new CertificateMessage(chain, peerAddress);
+			message = new CertificateMessage(Arrays.asList(chain), peerAddress);
 		}
 	}
 
@@ -374,11 +418,11 @@ public class HandshakerTest {
 	private Record createRecord(int epoch, long sequenceNo, int messageSeqNo) throws GeneralSecurityException {
 		ClientHello clientHello = new ClientHello(new ProtocolVersion(), new SecureRandom(), session, null, null);
 		clientHello.setMessageSeq(messageSeqNo);
-		return new Record(ContentType.HANDSHAKE, epoch, sequenceNo, clientHello, session);
+		return new Record(ContentType.HANDSHAKE, epoch, sequenceNo, clientHello, session, true, 0);
 	}
 	
 	private CertificateMessage createCertificateMessage(int seqNo) {
-		CertificateMessage result = new CertificateMessage(certificateChain, session.getPeer());
+		CertificateMessage result = new CertificateMessage(Arrays.asList(certificateChain), session.getPeer());
 		result.setMessageSeq(seqNo);
 		return result;
 	}
@@ -386,7 +430,7 @@ public class HandshakerTest {
 	private static Record getRecordForMessage(final int epoch, final int seqNo, final DTLSMessage msg, final InetSocketAddress peer) {
 		byte[] dtlsRecord = DtlsTestTools.newDTLSRecord(msg.getContentType().getCode(), epoch,
 				seqNo, msg.toByteArray());
-		List<Record> list = Record.fromByteArray(dtlsRecord, peer);
+		List<Record> list = Record.fromByteArray(dtlsRecord, peer, null);
 		assertFalse("Should be able to deserialize DTLS Record from byte array", list.isEmpty());
 		return list.get(0);
 	}
@@ -398,7 +442,7 @@ public class HandshakerTest {
 
 		ChangeCipherSpecTestHandshaker(final DTLSSession session, final RecordLayer recordLayer,
 				DtlsConnectorConfig config) {
-			super(false, session, recordLayer, null, config, 1500);
+			super(false, 0, session, recordLayer, null, config, 1500);
 		}
 
 		@Override

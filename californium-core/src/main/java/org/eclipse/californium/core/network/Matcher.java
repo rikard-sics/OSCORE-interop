@@ -110,9 +110,9 @@ public interface Matcher {
 	 * accordingly ({@link Request#setDuplicate(boolean)}.
 	 * 
 	 * @param request the request message received from the peer.
-	 * @return the message exchange that the request is a part of.
+	 * @param receiver handler for received request.
 	 */
-	Exchange receiveRequest(Request request);
+	void receiveRequest(Request request, EndpointReceiver receiver);
 
 	/**
 	 * Determines the message exchange that a response message received from a peer
@@ -123,10 +123,9 @@ public interface Matcher {
 	 * accordingly ({@link Response#setDuplicate(boolean)}.
 	 * 
 	 * @param response the response message received from the peer.
-	 * @return the message exchange that the response is a part of or {@code null}
-	 *         if the response cannot be matched to an ongoing exchange.
+	 * @param receiver handler for received response.
 	 */
-	Exchange receiveResponse(Response response);
+	void receiveResponse(Response response, EndpointReceiver receiver);
 
 	/**
 	 * Determines the message exchange that an empty message received from a peer
@@ -137,9 +136,9 @@ public interface Matcher {
 	 * message exchanges after <em>EXCHANGE_LIFETIME</em>.
 	 * 
 	 * @param message the empty message received from the peer.
-	 * @return the message exchange that the message is a part of.
+	 * @param receiver handler for received empty message.
 	 */
-	Exchange receiveEmptyMessage(EmptyMessage message);
+	void receiveEmptyMessage(EmptyMessage message, EndpointReceiver receiver);
 
 	/**
 	 * Clears all internal state.

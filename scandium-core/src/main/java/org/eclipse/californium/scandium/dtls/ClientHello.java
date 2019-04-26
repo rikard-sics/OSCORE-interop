@@ -33,12 +33,11 @@ import java.util.List;
 import org.eclipse.californium.elements.util.DatagramReader;
 import org.eclipse.californium.elements.util.DatagramWriter;
 import org.eclipse.californium.elements.util.StringUtil;
-import org.eclipse.californium.scandium.dtls.CertificateTypeExtension.CertificateType;
+import org.eclipse.californium.scandium.dtls.CertificateType;
 import org.eclipse.californium.scandium.dtls.HelloExtension.ExtensionType;
 import org.eclipse.californium.scandium.dtls.SupportedPointFormatsExtension.ECPointFormat;
 import org.eclipse.californium.scandium.dtls.cipher.CipherSuite;
 import org.eclipse.californium.scandium.dtls.cipher.ECDHECryptography.SupportedGroup;
-import org.eclipse.californium.scandium.util.ByteArrayUtils;
 
 /**
  * When a client first connects to a server, it is required to send the
@@ -189,23 +188,32 @@ public final class ClientHello extends HandshakeMessage {
 		}
 
 		// the certificate types the client is able to provide to the server
-		if (supportedClientCertificateTypes != null && !supportedClientCertificateTypes.isEmpty()) {
-			CertificateTypeExtension clientCertificateType = new ClientCertificateTypeExtension(true);
-			for (CertificateType certificateType : supportedClientCertificateTypes) {
-				clientCertificateType.addCertificateType(certificateType);
-			}
+		if (useCertificateTypeExtension(supportedClientCertificateTypes)) {
+			CertificateTypeExtension clientCertificateType = new ClientCertificateTypeExtension(supportedClientCertificateTypes);
 			this.extensions.addExtension(clientCertificateType);
 		}
 
 		// the type of certificates the client is able to process when provided
 		// by the server
-		if (supportedServerCertificateTypes != null && !supportedServerCertificateTypes.isEmpty()) {
-			CertificateTypeExtension serverCertificateType = new ServerCertificateTypeExtension(true);
-			for (CertificateType certificateType : supportedServerCertificateTypes) {
-				serverCertificateType.addCertificateType(certificateType);
-			}
+		if (useCertificateTypeExtension(supportedServerCertificateTypes)) {
+			CertificateTypeExtension serverCertificateType = new ServerCertificateTypeExtension(supportedServerCertificateTypes);
 			this.extensions.addExtension(serverCertificateType);
 		}
+	}
+
+	/**
+	 * Check, if certificate type extension is used.
+	 * 
+	 * If missing, or only contains X_509, don't send the extension.
+	 * 
+	 * @param supportedCertificateTypes list of certificate types
+	 * @return {@code true}, if extension must be used, {@code false}, otherwise
+	 */
+	private boolean useCertificateTypeExtension(List<CertificateType> supportedCertificateTypes) {
+		if (supportedCertificateTypes != null && !supportedCertificateTypes.isEmpty()) {
+			return supportedCertificateTypes.size() > 1 || !supportedCertificateTypes.contains(CertificateType.X_509);
+		}
+		return false;
 	}
 
 	private ClientHello(InetSocketAddress peerAddress) {
@@ -225,7 +233,7 @@ public final class ClientHello extends HandshakeMessage {
 		writer.writeBytes(random.getRandomBytes());
 
 		writer.write(sessionId.length(), SESSION_ID_LENGTH_BITS);
-		writer.writeBytes(sessionId.getId());
+		writer.writeBytes(sessionId.getBytes());
 
 		writer.write(cookie.length, COOKIE_LENGTH);
 		writer.writeBytes(cookie);
@@ -319,11 +327,11 @@ public final class ClientHello extends HandshakeMessage {
 		sb.append(StringUtil.lineSeparator()).append("\t\tRandom:").append(StringUtil.lineSeparator()).append(random);
 		sb.append("\t\tSession ID Length: ").append(sessionId.length());
 		if (sessionId.length() > 0) {
-			sb.append(StringUtil.lineSeparator()).append("\t\tSession ID: ").append(ByteArrayUtils.toHexString(sessionId.getId()));
+			sb.append(StringUtil.lineSeparator()).append("\t\tSession ID: ").append(sessionId);
 		}
 		sb.append(StringUtil.lineSeparator()).append("\t\tCookie Length: ").append(cookie.length);
 		if (cookie.length > 0) {
-			sb.append(StringUtil.lineSeparator()).append("\t\tCookie: ").append(ByteArrayUtils.toHexString(cookie));
+			sb.append(StringUtil.lineSeparator()).append("\t\tCookie: ").append(StringUtil.byteArray2HexString(cookie));
 		}
 		sb.append(StringUtil.lineSeparator()).append("\t\tCipher Suites Length: ").append(supportedCipherSuites.size() * 2);
 		sb.append(StringUtil.lineSeparator()).append("\t\tCipher Suites (").append(supportedCipherSuites.size()).append(" suites)");
@@ -373,7 +381,21 @@ public final class ClientHello extends HandshakeMessage {
 		return cookie;
 	}
 
+	/**
+	 * Set received cookie.
+	 * 
+	 * Adjust fragment length.
+	 * 
+	 * @param cookie recevied cookie
+	 * @throws NullPointerException if cookie is {@code null}
+	 * @throws IllegalArgumentException if cookie is empty
+	 */
 	public void setCookie(byte[] cookie) {
+		if (cookie == null) {
+			throw new NullPointerException("cookie must not be null!");
+		} else if (cookie.length == 0) {
+			throw new IllegalArgumentException("cookie must not be empty!");
+		}
 		this.cookie = Arrays.copyOf(cookie, cookie.length);
 	}
 
@@ -479,6 +501,20 @@ public final class ClientHello extends HandshakeMessage {
 	public ServerNameExtension getServerNameExtension() {
 		if (extensions != null) {
 			return (ServerNameExtension) extensions.getExtension(ExtensionType.SERVER_NAME);
+		} else {
+			return null;
+		}
+	}
+
+	/**
+	 * Gets the <em>connection id</em> extension data from this message.
+	 * 
+	 * @return the extension data or <code>null</code> if this message does not contain the
+	 *          <em>connection id</em> extension.
+	 */
+	public ConnectionIdExtension getConnectionIdExtension() {
+		if (extensions != null) {
+			return (ConnectionIdExtension) extensions.getExtension(ExtensionType.CONNECTION_ID);
 		} else {
 			return null;
 		}

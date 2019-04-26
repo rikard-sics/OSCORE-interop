@@ -40,7 +40,8 @@ public class EcdhPskServerKeyExchangeTest {
 	public void setUp() throws Exception {
 
 		SupportedGroup usableGroup = SupportedGroup.secp256r1;
-		msg = new EcdhPskServerKeyExchange(ECDHECryptography.fromNamedCurveId(usableGroup.getId()),
+		msg = new EcdhPskServerKeyExchange(PskPublicInformation.EMPTY,
+				ECDHECryptography.fromNamedCurveId(usableGroup.getId()),
 				new Random(),
 				new Random(),
 				usableGroup.getId(),
@@ -57,7 +58,7 @@ public class EcdhPskServerKeyExchangeTest {
 	@Test
 	public void testDeserializedMsg() throws HandshakeException {
 		byte[] serializedMsg = msg.toByteArray();
-		HandshakeParameter parameter = new HandshakeParameter(KeyExchangeAlgorithm.ECDHE_PSK, false);
+		HandshakeParameter parameter = new HandshakeParameter(KeyExchangeAlgorithm.ECDHE_PSK, CertificateType.X_509);
 		HandshakeMessage handshakeMsg = HandshakeMessage.fromByteArray(serializedMsg, parameter, peerAddress);
 		assertTrue(((EcdhPskServerKeyExchange)handshakeMsg).getCurveId() == SupportedGroup.secp256r1.getId());
 		assertNotNull(ephemeralPubKey);

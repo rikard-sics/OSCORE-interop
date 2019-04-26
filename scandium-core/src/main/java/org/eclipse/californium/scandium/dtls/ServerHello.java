@@ -26,11 +26,9 @@ import org.eclipse.californium.elements.util.DatagramWriter;
 import org.eclipse.californium.elements.util.StringUtil;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertDescription;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertLevel;
-import org.eclipse.californium.scandium.dtls.CertificateTypeExtension.CertificateType;
+import org.eclipse.californium.scandium.dtls.CertificateType;
 import org.eclipse.californium.scandium.dtls.HelloExtension.ExtensionType;
 import org.eclipse.californium.scandium.dtls.cipher.CipherSuite;
-import org.eclipse.californium.scandium.util.ByteArrayUtils;
-
 
 /**
  * A TLS handshake message sent by a server in response to a {@link ClientHello}
@@ -155,7 +153,7 @@ public final class ServerHello extends HandshakeMessage {
 		writer.writeBytes(random.getRandomBytes());
 
 		writer.write(sessionId.length(), SESSION_ID_LENGTH_BITS);
-		writer.writeBytes(sessionId.getId());
+		writer.writeBytes(sessionId.getBytes());
 
 		writer.write(cipherSuite.getCode(), CIPHER_SUITE_BITS);
 		writer.write(compressionMethod.getCode(), COMPRESSION_METHOD_BITS);
@@ -297,35 +295,36 @@ public final class ServerHello extends HandshakeMessage {
 	 * Gets the type of certificate the server expects the client to send in
 	 * its <em>Certificate</em> message.
 	 * 
-	 * @return the type
+	 * @return the certificate type
 	 */
 	CertificateType getClientCertificateType() {
-		// default type is always X.509
-		CertificateType result = CertificateType.X_509;
-		if (extensions != null) {
-			ClientCertificateTypeExtension ext = (ClientCertificateTypeExtension)
-					extensions.getExtension(ExtensionType.CLIENT_CERT_TYPE);
-			if (ext != null && !ext.getCertificateTypes().isEmpty()) {
-				result = ext.getCertificateTypes().get(0);
-			}
-		}
-		return result;
+		return getCertificateType(ExtensionType.CLIENT_CERT_TYPE);
 	}
-	
+
 	/**
 	 * Gets the type of certificate the server will send to the client in
 	 * its <em>Certificate</em> message.
 	 * 
-	 * @return the type
+	 * @return the certificate type
 	 */
 	CertificateType getServerCertificateType() {
+		return getCertificateType(ExtensionType.SERVER_CERT_TYPE);
+	}
+
+	/**
+	 * Gets the type of certificate for the provided extension type.
+	 * 
+	 * @param type extension type. Either {@link ExtensionType#SERVER_CERT_TYPE} or {@link ExtensionType#CLIENT_CERT_TYPE}
+	 * @return the certificate type
+	 */
+	CertificateType getCertificateType(ExtensionType type) {
 		// default type is always X.509
 		CertificateType result = CertificateType.X_509;
 		if (extensions != null) {
-			ServerCertificateTypeExtension ext = (ServerCertificateTypeExtension)
-					extensions.getExtension(ExtensionType.SERVER_CERT_TYPE);
-			if (ext != null && !ext.getCertificateTypes().isEmpty()) {
-				result = ext.getCertificateTypes().get(0);
+			CertificateTypeExtension certificateExtension = (CertificateTypeExtension)
+					extensions.getExtension(type);
+			if (certificateExtension != null && !certificateExtension.getCertificateTypes().isEmpty()) {
+				result = certificateExtension.getCertificateTypes().get(0);
 			}
 		}
 		return result;
@@ -340,6 +339,20 @@ public final class ServerHello extends HandshakeMessage {
 	MaxFragmentLengthExtension getMaxFragmentLength() {
 		if (extensions != null) {
 			return (MaxFragmentLengthExtension) extensions.getExtension(ExtensionType.MAX_FRAGMENT_LENGTH);
+		} else {
+			return null;
+		}
+	}
+
+	/**
+	 * Gets the <em>connection id</em> extension data from this message.
+	 * 
+	 * @return the extension data or <code>null</code> if this message does not contain the
+	 *          <em>connection id</em> extension.
+	 */
+	public ConnectionIdExtension getConnectionIdExtension() {
+		if (extensions != null) {
+			return (ConnectionIdExtension) extensions.getExtension(ExtensionType.CONNECTION_ID);
 		} else {
 			return null;
 		}
@@ -365,7 +378,7 @@ public final class ServerHello extends HandshakeMessage {
 		sb.append(StringUtil.lineSeparator()).append("\t\tRandom:").append(random);
 		sb.append(StringUtil.lineSeparator()).append("\t\tSession ID Length: ").append(sessionId.length());
 		if (sessionId.length() > 0) {
-			sb.append(StringUtil.lineSeparator()).append("\t\tSession ID: ").append(ByteArrayUtils.toHexString(sessionId.getId()));
+			sb.append(StringUtil.lineSeparator()).append("\t\tSession ID: ").append(sessionId);
 		}
 		sb.append(StringUtil.lineSeparator()).append("\t\tCipher Suite: ").append(cipherSuite);
 		sb.append(StringUtil.lineSeparator()).append("\t\tCompression Method: ").append(compressionMethod);

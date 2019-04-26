@@ -25,8 +25,10 @@ import java.util.List;
 
 import org.eclipse.californium.elements.util.SslContextUtil;
 import org.eclipse.californium.scandium.config.DtlsConnectorConfig;
+import org.eclipse.californium.scandium.dtls.CertificateType;
+import org.eclipse.californium.scandium.dtls.SingleNodeConnectionIdGenerator;
+import org.eclipse.californium.scandium.dtls.cipher.CipherSuite;
 import org.eclipse.californium.scandium.dtls.pskstore.InMemoryPskStore;
-import org.eclipse.californium.scandium.dtls.rpkstore.TrustAllRpks;
 
 /**
  * Credentials utility for setup DTLS credentials.
@@ -41,6 +43,10 @@ public class CredentialsUtil {
 		 * Preshared secret keys.
 		 */
 		PSK,
+		/**
+		 * EC DHE, preshared secret keys.
+		 */
+		ECDHE_PSK,
 		/**
 		 * Raw public key certificates.
 		 */
@@ -64,15 +70,29 @@ public class CredentialsUtil {
 	}
 
 	/**
-	 * Default list of modes.
+	 * Default list of modes for clients.
 	 * 
 	 * Value is PSK, RPK, X509.
 	 */
-	public static final List<Mode> DEFAULT_MODES = Arrays.asList(new Mode[] { Mode.PSK, Mode.RPK, Mode.X509 });
+	public static final List<Mode> DEFAULT_CLIENT_MODES = Arrays.asList(new Mode[] { Mode.PSK, Mode.RPK, Mode.X509 });
+
+	/**
+	 * Default list of modes for servers.
+	 * 
+	 * Value is PSK, ECDHE_PSK, RPK, X509.
+	 */
+	public static final List<Mode> DEFAULT_SERVER_MODES = Arrays.asList(new Mode[] { Mode.PSK, Mode.ECDHE_PSK, Mode.RPK, Mode.X509 });
 
 	// from ETSI Plugtest test spec
 	public static final String PSK_IDENTITY = "password";
 	public static final byte[] PSK_SECRET = "sesame".getBytes();
+
+	public static final String OPEN_PSK_IDENTITY = "Client_identity";
+	public static final byte[] OPEN_PSK_SECRET = "secretPSK".getBytes();
+
+	// CID
+	public static final String OPT_CID = "CID:";
+	public static final int  DEFAULT_CID_LENGTH = 6;
 
 	// from demo-certs
 	public static final String SERVER_NAME = "server";
@@ -83,25 +103,79 @@ public class CredentialsUtil {
 	private static final String KEY_STORE_LOCATION = "certs/keyStore.jks";
 	private static final String TRUST_STORE_LOCATION = "certs/trustStore.jks";
 
+	private static final String[] OPT_CID_LIST = {OPT_CID};
+
+	/**
+	 * Get opt-cid for argument.
+	 * 
+	 * @param arg command line argument
+	 * @return opt-cid, of {@code null}, if argument is no opt-cid
+	 */
+	private static String getOptCid(String arg) {
+		for (String opt : OPT_CID_LIST) {
+			if (arg.startsWith(opt)) {
+				return opt;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Setup connection id configuration.
+	 * 
+	 * Supports "CID:length" for using CID after the handshake, "CID+:length" to sue
+	 * a CID even during the handshake.
+	 * 
+	 * @param args    command line arguments
+	 * @param builder dtls configuration builder.
+	 */
+	public static void setupCid(String[] args, DtlsConnectorConfig.Builder builder) {
+		for (String mode : args) {
+			String opt = getOptCid(mode);
+			if (opt != null) {
+				String value = mode.substring(opt.length());
+				int cidLength = DEFAULT_CID_LENGTH;
+				try {
+					cidLength = Integer.parseInt(value);
+					if (cidLength < 0) {
+						System.err.println("'" + value + "' is negative! Use cid-lenght default " + DEFAULT_CID_LENGTH);
+						cidLength = DEFAULT_CID_LENGTH;
+					}
+				} catch (NumberFormatException e) {
+					System.err.println("'" + value + "' is no number! Use cid-lenght default " + DEFAULT_CID_LENGTH);
+				}
+				builder.setConnectionIdGenerator(new SingleNodeConnectionIdGenerator(cidLength));
+				if (cidLength == 0) {
+					System.out.println("Enable cid support");
+				} else {
+					System.out.println("Use " + cidLength + " bytes cid");
+				}
+			}
+		}
+	}
+
 	/**
 	 * Parse arguments to modes.
 	 * 
-	 * @param args arguments
-	 * @param defaults default modes to use, if argument is empty or only
-	 *            contains {@link Mode#NO_AUTH}.
-	 * @param supported supported modes
+	 * @param args
+	 *            arguments
+	 * @param defaults
+	 *            default modes to use, if argument is empty or only contains
+	 *            {@link Mode#NO_AUTH}.
+	 * @param supported
+	 *            supported modes
 	 * @return array of modes.
 	 */
 	public static List<Mode> parse(String[] args, List<Mode> defaults, List<Mode> supported) {
 		List<Mode> modes;
 		if (args.length == 0) {
-			modes = new ArrayList<>();
-			if (defaults != null) {
-				modes.addAll(defaults);
-			}
+			modes = new ArrayList<>(defaults.size());
 		} else {
 			modes = new ArrayList<>(args.length);
 			for (String mode : args) {
+				if (getOptCid(mode) != null) {
+					continue;
+				}
 				try {
 					modes.add(Mode.valueOf(mode));
 				} catch (IllegalArgumentException ex) {
@@ -149,47 +223,80 @@ public class CredentialsUtil {
 	 * PSK, X509, RPK setup for PSK, RPK and X509, prefer X509
 	 * </pre>
 	 * 
-	 * @param config DTLS configuration builder. May be already initialized with
+	 * @param config
+	 *            DTLS configuration builder. May be already initialized with
 	 *            PskStore.
-	 * @param certificateAlias alias for certificate to load as credentials.
-	 * @param modes list of supported mode. If a RPK is in the list before X509,
+	 * @param certificateAlias
+	 *            alias for certificate to load as credentials.
+	 * @param modes
+	 *            list of supported mode. If a RPK is in the list before X509,
 	 *            or RPK is provided but not X509, then the RPK is setup as
 	 *            preferred.
-	 * @throws IllegalArgumentException if loading the certificates fails for
-	 *             some reason
+	 * @throws IllegalArgumentException
+	 *             if loading the certificates fails for some reason
 	 */
 	public static void setupCredentials(DtlsConnectorConfig.Builder config, String certificateAlias, List<Mode> modes) {
 
-		boolean psk = modes.contains(Mode.PSK);
+		boolean ecdhePsk = modes.contains(Mode.ECDHE_PSK);
+		boolean plainPsk = modes.contains(Mode.PSK);
+		boolean psk = ecdhePsk || plainPsk;
+
 		if (psk && config.getIncompleteConfig().getPskStore() == null) {
 			// Pre-shared secret keys
 			InMemoryPskStore pskStore = new InMemoryPskStore();
 			pskStore.setKey(PSK_IDENTITY, PSK_SECRET);
+			pskStore.setKey(OPEN_PSK_IDENTITY, OPEN_PSK_SECRET);
 			config.setPskStore(pskStore);
 		}
+		boolean noAuth = modes.contains(Mode.NO_AUTH);
 		boolean x509Trust = modes.contains(Mode.X509_TRUST);
+		boolean rpkTrust = modes.contains(Mode.RPK_TRUST);
 		int x509 = modes.indexOf(Mode.X509);
 		int rpk = modes.indexOf(Mode.RPK);
 
-		if (x509 >= 0 || rpk >= 0 || x509Trust) {
-			SslContextUtil.Credentials serverCredentials = null;
-			Certificate[] trustedCertificates = null;
+		if (noAuth) {
+			if (x509Trust) {
+				throw new IllegalArgumentException(Mode.NO_AUTH + " doesn't support " + Mode.X509_TRUST);
+			}
+			if (rpkTrust) {
+				throw new IllegalArgumentException(Mode.NO_AUTH + " doesn't support " + Mode.RPK_TRUST);
+			}
+			config.setClientAuthenticationRequired(false);
+		}
 
+		if (x509 >= 0 || rpk >= 0) {
 			try {
 				// try to read certificates
-				serverCredentials = SslContextUtil.loadCredentials(SslContextUtil.CLASSPATH_SCHEME + KEY_STORE_LOCATION,
-						certificateAlias, KEY_STORE_PASSWORD, KEY_STORE_PASSWORD);
-				if (x509 >= 0 || x509Trust) {
-					trustedCertificates = SslContextUtil.loadTrustedCertificates(
-							SslContextUtil.CLASSPATH_SCHEME + TRUST_STORE_LOCATION, TRUST_NAME, TRUST_STORE_PASSWORD);
+				SslContextUtil.Credentials serverCredentials = SslContextUtil.loadCredentials(
+						SslContextUtil.CLASSPATH_SCHEME + KEY_STORE_LOCATION, certificateAlias, KEY_STORE_PASSWORD,
+						KEY_STORE_PASSWORD);
+				if (!noAuth) {
 					if (x509 >= 0) {
-						config.setIdentity(serverCredentials.getPrivateKey(), serverCredentials.getCertificateChain(),
-								rpk >= 0 && rpk < x509);
+						Certificate[] trustedCertificates = SslContextUtil.loadTrustedCertificates(
+								SslContextUtil.CLASSPATH_SCHEME + TRUST_STORE_LOCATION, TRUST_NAME,
+								TRUST_STORE_PASSWORD);
+						config.setTrustStore(trustedCertificates);
 					}
-					config.setTrustStore(trustedCertificates);
-				} else {
-					config.setIdentity(serverCredentials.getPrivateKey(), serverCredentials.getCertificateChain(),
-							true);
+					if (rpk >= 0) {
+						config.setRpkTrustAll();
+					}
+				}
+				if (x509 >= 0 || rpk >= 0) {
+					List<CertificateType> types = new ArrayList<>();
+					if (x509 >= 0 && rpk >= 0) {
+						if (rpk < x509) {
+							types.add(CertificateType.RAW_PUBLIC_KEY);
+							types.add(CertificateType.X_509);
+						} else {
+							types.add(CertificateType.X_509);
+							types.add(CertificateType.RAW_PUBLIC_KEY);
+						}
+					} else if (x509 >= 0) {
+						types.add(CertificateType.X_509);
+					} else if (rpk >= 0) {
+						types.add(CertificateType.RAW_PUBLIC_KEY);
+					}
+					config.setIdentity(serverCredentials.getPrivateKey(), serverCredentials.getCertificateChain(), types);
 				}
 			} catch (GeneralSecurityException e) {
 				e.printStackTrace();
@@ -209,11 +316,26 @@ public class CredentialsUtil {
 				}
 			}
 		}
-		if (modes.contains(Mode.RPK_TRUST)) {
-			config.setRpkTrustStore(new TrustAllRpks());
+		if (x509Trust) {
+			// trust all
+			config.setTrustStore(new Certificate[0]);
 		}
-		if (modes.contains(Mode.NO_AUTH)) {
-			config.setClientAuthenticationRequired(false);
+		if (rpkTrust) {
+			// trust all
+			config.setRpkTrustAll();
+		}
+		if (psk && config.getIncompleteConfig().getSupportedCipherSuites() == null) {
+			List<CipherSuite> suites = new ArrayList<>();
+			if (x509 >= 0 || rpk >= 0 || x509Trust || rpkTrust) {
+				suites.addAll(CipherSuite.getEcdsaCipherSuites(true));
+			}
+			if (ecdhePsk) {
+				suites.add(CipherSuite.TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256);
+			} 
+			if (plainPsk) {
+				suites.addAll(CipherSuite.getPskCipherSuites(true, false));
+			}
+			config.setSupportedCipherSuites(suites);
 		}
 	}
 }

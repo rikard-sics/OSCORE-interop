@@ -171,7 +171,7 @@ public class CoapServer implements ServerInterface {
 		this.endpoints = new ArrayList<>();
 		// create endpoint for each port
 		for (int port : ports) {
-			CoapEndpoint.CoapEndpointBuilder builder = new CoapEndpoint.CoapEndpointBuilder();
+			CoapEndpoint.Builder builder = new CoapEndpoint.Builder();
 			builder.setPort(port);
 			builder.setNetworkConfig(config);
 			addEndpoint(builder.build());
@@ -240,7 +240,7 @@ public class CoapServer implements ServerInterface {
 			// servers should bind to the configured port (while clients should use an ephemeral port through the default endpoint)
 			int port = config.getInt(NetworkConfig.Keys.COAP_PORT);
 			LOGGER.info("no endpoints have been defined for server, setting up server endpoint on default port {}", port);
-			CoapEndpoint.CoapEndpointBuilder builder = new CoapEndpoint.CoapEndpointBuilder();
+			CoapEndpoint.Builder builder = new CoapEndpoint.Builder();
 			builder.setPort(port);
 			builder.setNetworkConfig(config);
 			addEndpoint(builder.build());
@@ -287,7 +287,7 @@ public class CoapServer implements ServerInterface {
 		LOGGER.info("Destroying server");
 		// prevent new tasks from being submitted
 		try {
-			if (!detachExecutor) {
+			if (running && !detachExecutor) {
 				executor.shutdown(); // cannot be started again
 				try {
 					// wait for currently executing tasks to complete
@@ -444,19 +444,22 @@ public class CoapServer implements ServerInterface {
 		private static final String SPACE = "                                               "; // 47 until line end
 		private final String VERSION = CoapServer.class.getPackage().getImplementationVersion()!=null ?
 				"Cf "+CoapServer.class.getPackage().getImplementationVersion() : SPACE;
-		private final String msg = new StringBuilder()
-			.append("************************************************************\n")
-			.append("CoAP RFC 7252").append(SPACE.substring(VERSION.length())).append(VERSION).append("\n")
-			.append("************************************************************\n")
-			.append("This server is using the Eclipse Californium (Cf) CoAP framework\n")
-			.append("published under EPL+EDL: http://www.eclipse.org/californium/\n")
-			.append("\n")
-			.append("(c) 2014, 2015, 2016 Institute for Pervasive Computing, ETH Zurich and others\n")
-			.append("************************************************************")
-			.toString();
+		private final String msg;
 
 		public RootResource() {
 			super("");
+			String nodeId = config.getString(NetworkConfig.Keys.DTLS_CONNECTION_ID_NODE_ID);
+			StringBuilder builder = new StringBuilder()
+					.append("************************************************************\n").append("CoAP RFC 7252")
+					.append(SPACE.substring(VERSION.length())).append(VERSION).append("\n")
+					.append("************************************************************\n")
+					.append("This server is using the Eclipse Californium (Cf) CoAP framework\n")
+					.append("published under EPL+EDL: http://www.eclipse.org/californium/\n").append("\n");
+			if (nodeId != null && !nodeId.isEmpty()) {
+				builder.append("node id = ").append(nodeId).append("\n\n");
+			}
+			msg = builder.append("(c) 2014, 2015, 2016 Institute for Pervasive Computing, ETH Zurich and others\n")
+					.append("************************************************************").toString();
 		}
 
 		@Override
